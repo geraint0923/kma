@@ -37,10 +37,13 @@
 /************System include***********************************************/
 #include <assert.h>
 #include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
 
 /************Private include**********************************************/
 #include "kma_page.h"
 #include "kma.h"
+#include "utils.h"
 
 /************Defines and Typedefs*****************************************/
 /*  #defines and typedefs should have their names in all caps.
@@ -61,7 +64,7 @@ kma_page_t *first_page = NULL;
 
 struct page_info {
 	kma_page_t *page;
-	int ref_count;
+//	int ref_count;
 };
 
 struct free_node {
@@ -76,10 +79,59 @@ struct rm_ctl {
 	int total_free;
 	struct free_node free_list;
 	struct free_node unused_list;
+	struct free_node page_list;
 };
 
+struct rm_ctl *get_rm_ctl() {
+	assert(first_page);
+	return (struct rm_ctl*)((char*)first_page->ptr + sizeof(struct page_info));
+}
+
+void list_append(struct free_node *item, struct free_node *header) {
+	item->prev = header->prev;
+	item->next = header;
+	header->prev = item;
+	item->prev->next = item;
+}
+
+void list_insert_head(struct free_node *item, struct free_node *header) {
+	item->prev = header;
+	item->next = header->next;
+	header->next = item;
+	item->next->prev = item;
+}
+
+void list_insert_before(struct free_node *item, struct free_node *target) {
+	item->prev = target->prev;
+	item->next = target;
+	item->prev->next = item;
+	item->next->prev = item;
+}
+
+void list_remove(struct free_node *item) {
+	item->prev->next = item->next;
+	item->next->prev = item->prev;
+}
+
+extern struct free_node *get_unused_free_node();
 
 void add_page_for_free_node() {
+	struct rm_ctl *ctl = get_rm_ctl();
+	struct free_node *cur, *end;
+	struct page_info *info;
+	kma_page_t *page;
+	assert(ctl);
+	page = get_page();
+	info = (struct page_info*)page->ptr;
+	info->page = page;
+	cur = (struct free_node*)((char*)info + sizeof(struct page_info));
+	end = (struct free_node*)get_page_end(cur);
+	for(; cur + 1 < end; cur++) {
+		list_append(cur, &(ctl->unused_list));
+	}
+	cur = get_unused_free_node();
+	cur->addr = (void*)page;
+	list_append(cur, &(ctl->page_list));
 }
 
 void init_first_page() {
@@ -91,12 +143,87 @@ void init_first_page() {
 	info = (struct page_info*)first_page->ptr;
 	ctl = (struct rm_ctl*)((char*)first_page->ptr + sizeof(struct page_info));
 	info->page = first_page;
-	info->ref_count = 0;
+//	info->ref_count = 0;
 	ctl->total_alloc = 0;
 	ctl->total_free = 0;
 	ctl->free_list.prev = ctl->free_list.next = &(ctl->free_list);
 	ctl->unused_list.prev = ctl->unused_list.next = &(ctl->unused_list);
+	ctl->page_list.prev = ctl->page_list.next = &(ctl->page_list);
+	cur = (struct free_node*)((char*)ctl + sizeof(struct rm_ctl));
+	end = (struct free_node*)get_page_end((void*)cur);
+	for(; cur + 1 < end; cur++) {
+		list_append(cur, &(ctl->unused_list));
+	}
+}
 
+struct free_node *get_unused_free_node() {
+	struct rm_ctl *ctl = get_rm_ctl();
+	struct free_node *node;
+	assert(ctl);
+	if(ctl->unused_list.prev == &(ctl->unused_list))
+		add_page_for_free_node();
+	node = ctl->unused_list.next;
+	list_remove(node);
+	return node;
+};
+
+void put_unused_free_node(struct free_node *node) {
+	struct rm_ctl *ctl = get_rm_ctl();
+	assert(node);
+	list_insert_head(node, &(ctl->unused_list));
+}
+
+void *first_fit(kma_size_t size) {
+	struct free_node *cur, *node;
+	kma_page_t *page;
+	struct page_info *info;
+	void *ptr;
+	int found = 0;
+	struct rm_ctl *ctl = get_rm_ctl();
+	assert(ctl);
+	cur = ctl->free_list.next;
+//	printf("Want => %d %d\n", size, sizeof(struct page_info));
+	while(cur != &(ctl->free_list)) {
+//		printf("loop (%08x, %d)\n", cur->addr, cur->size);
+		if(cur->size >= size) {
+			found = 1;
+			break;
+		}
+		cur = cur->next;
+	}
+	if(!found) {
+		page = get_page();
+		info = (struct page_info*)page->ptr;
+		info->page = page;
+		cur = get_unused_free_node();
+		cur->addr = (void*)((char*)page->ptr + sizeof(struct page_info));
+		cur->size = page->size - sizeof(struct page_info);
+//		assert(page->ptr);
+	} else {
+//		printf("Found => (%08x, %d)\n", cur->addr, cur->size);
+	}
+	assert(cur);
+	ptr = cur->addr;
+	cur->addr = (void*)((char*)cur->addr + size);
+	cur->size -= size;
+	if(cur->size == 0) {
+		if(found)
+			list_remove(cur);
+		put_unused_free_node(cur);
+	} else {
+		if(!found) {
+			node = ctl->free_list.next;
+			while(node != &(ctl->free_list)) {
+				if(cur->addr < node->addr) {
+					break;
+				}
+				node = node->next;
+			}
+			list_insert_before(cur, node);
+		}
+	}
+	ctl->total_alloc++;
+	return ptr;
 }
 
 void*
@@ -107,13 +234,88 @@ kma_malloc(kma_size_t size)
 	if(!first_page) {
 		init_first_page();
 	}
-	return NULL;
+	return first_fit(size);
 }
 
 void
 kma_free(void* ptr, kma_size_t size)
 {
-	;
+	struct rm_ctl *ctl = get_rm_ctl();
+	void *base_addr;
+	struct free_node *cur, *node;
+	struct page_info *info;
+	int done = 0, count = 0;
+	kma_page_t *page_array[MAXPAGES/2];
+	assert(ctl);
+
+
+	base_addr = get_page_start(ptr);
+	cur = ctl->free_list.next;
+//	printf("----------------\n");
+	while(cur != &(ctl->free_list)) {
+//		printf("DEBUG ** cur (%08x, %08x) want (%08x, %08x)\n", cur->addr, cur->size, ptr, size);
+		if(base_addr == get_page_start(cur->addr) &&
+				(ptr == (void*)((char*)cur->addr + cur->size))) {
+//			printf("prev DEBUG ** cur (%08x, %08x) want (%08x, %08x)\n", cur->addr, cur->size, ptr, size);
+			done = 1;
+			node = cur->next;
+			cur->size += size;
+//			printf("after DEBUG ** cur (%08x, %08x) want (%08x, %08x)\n", cur->addr, cur->size, ptr, size);
+//			printf("test %08x %08x\n", (void*)((char*)cur->addr + (long)cur->size), node->addr);
+			if(node != &(ctl->free_list) &&
+					//base_addr == get_page_start(node->addr) &&
+					base_addr == get_page_start(node->addr) &&
+					((void*)((char*)cur->addr + (long)cur->size) == node->addr)) {
+//				printf("in in here\n");
+				cur->size += node->size;
+				list_remove(node);
+				put_unused_free_node(node);
+			}
+			break;
+		} else if(base_addr == get_page_start(cur->addr) &&
+				(cur->addr == (void*)((char*)ptr + size))) {
+//			printf("next DEBUG ** cur (%08x, %08x) want (%08x, %08x)\n", cur->addr, cur->size, ptr, size);
+			cur->addr = ptr;
+			cur->size += size;
+//			printf("after next DEBUG ** cur (%08x, %08x) want (%08x, %08x)\n", cur->addr, cur->size, ptr, size);
+			done = 1;
+			break;
+		} else if((void*)((char*)ptr + size) < cur->addr) {
+			break;
+		}
+		cur = cur->next;
+	}
+	if(!done) {
+		node = get_unused_free_node();
+		node->addr = ptr;
+		node->size = size;
+		list_insert_before(node, cur);
+	}
+	ctl->total_free++;
+
+
+	if(ctl->total_alloc == ctl->total_free) {
+	//	printf("Done???\n");
+		// TODO free all the used data struct
+		cur = ctl->free_list.next;
+		while(cur != &(ctl->free_list)) {
+			info = (struct page_info*)get_page_start(cur->addr);
+//			printf("(%08x, %08x) => %08x\n", cur->addr, cur->size, get_page_start(cur->addr));
+			assert(info->page->ptr);
+			free_page(info->page);
+			cur = cur->next;
+		}
+		cur = ctl->page_list.next;
+		while(cur != &(ctl->page_list)) {
+			assert(((kma_page_t*)cur->addr)->ptr);
+			page_array[count++] = (kma_page_t*)cur->addr;
+			cur = cur->next;
+		}
+		for(count = count - 1; count >= 0; count--)
+			free_page(page_array[count]);
+		free_page(first_page);
+		first_page = NULL;
+	}
 }
 
 #endif // KMA_RM

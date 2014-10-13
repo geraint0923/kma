@@ -1,0 +1,166 @@
+#!/usr/bin/env python2
+import math, os, random, sys
+
+class allocationStream:
+    
+    def __init__(self, count, allocSizePolicy, minSize, maxSize, deallocPolicy):
+        self.count = count
+        if allocSizePolicy not in ["log", "linear"]:
+            raise RuntimeError("invalid allocation size distribution: %s" % allocSizePolicy)
+        self.allocSizePolicy = allocSizePolicy
+        self.minSize = minSize
+        self.maxSize = maxSize
+        if deallocPolicy not in ["uniform", "early"]:
+            raise RuntimeError("invalid deallocation policy: %s" % deallocPolicy)
+        self.deallocPolicy = deallocPolicy
+        
+        self.genAllocs()
+        self.addDeallocs()
+    
+    def genAllocs(self):
+        self.allocs = []
+        self.allocsDict = {}
+        for i in range(self.count):
+            val = None
+            if self.allocSizePolicy == "log":
+                maxLog = math.log(self.maxSize) / math.log(2)
+                minLog = math.log(self.minSize) / math.log(2)
+                logDiff = maxLog - minLog
+                val = math.pow(2.0, random.random() * logDiff + minLog)
+            elif self.allocSizePolicy == "linear":
+                val = random.random() * (self.maxSize - self.minSize) + self.minSize
+            val = int(math.floor(val))
+            
+            tup = ("REQUEST", i, val)
+            self.allocs += [tup]
+            self.allocsDict[i] = tup
+    
+    def addDeallocs(self):
+        index = 0
+        while index < len(self.allocs):
+            tup = self.allocs[index]
+            
+            # Skip over FREEs
+            if tup[0] != "REQUEST":
+                index += 1
+                continue
+            
+            # We have a request... schedule the free sometime after the
+            # request was made: insertion point > current index!
+            
+            insertIndex = None
+            maxIndex = len(self.allocs)
+            minIndex = index + 1
+            
+            # attempt at sampling from logarithmic space
+            maxLog = math.log(maxIndex + 1) / math.log(0.5)
+            minLog = math.log(minIndex) / math.log(0.5)
+            logDiff = maxLog - minLog
+            val = int(math.floor(math.pow(0.5, random.random() * logDiff + minLog)))
+            earlyVal = val
+            lateVal = maxIndex - (val - minIndex)
+            
+            if self.deallocPolicy == "uniform":
+                insertIndex = random.randint(minIndex, maxIndex)
+            elif self.deallocPolicy == "early":
+                # 75% chance that dealloc index will be in the first 25% of the available indices
+                probEarly = 0.9
+                indexPctEarly = 0.1
+                if random.random() < probEarly:
+                    # dealloc early
+                    newMaxIndex = int(math.floor(indexPctEarly * (maxIndex - minIndex) + minIndex))
+                    insertIndex = random.randint(minIndex, newMaxIndex)
+                else:
+                    # normal dealloc
+                    insertIndex = random.randint(minIndex, maxIndex)
+            
+            if not insertIndex > index:
+                raise RuntimeError("insert index must be greater than current index!")
+            
+            self.allocs.insert(insertIndex, ("FREE", tup[1]))
+            
+            index += 1
+    
+    def printStats(self):
+        sum = 0
+        maxAlloc = None
+        allocCount = 0
+        deallocCount = 0
+        for index in range(len(self.allocs)):
+            t = self.allocs[index]
+            if t[0] == "REQUEST":
+                sum += t[2]
+                allocCount += 1
+            if t[0] == "FREE":
+                sum -= self.allocsDict[t[1]][2]
+                deallocCount += 1
+            
+            if maxAlloc is None or sum > maxAlloc:
+                maxAlloc = sum
+        
+        print "%s allocations, %s deallocations" % (allocCount, deallocCount)
+        print "Maximum bytes allocated: %s" % maxAlloc
+    
+    def write(self, file):
+        f = open(file, "w")
+        f.write("%s\n" % len(self.allocs))
+        for t in self.allocs:
+            f.write("%s\n" % (" ".join([str(x) for x in t])))
+        f.close()
+    
+    def makeGraphs(self):
+        basename = "traceAllocation"
+        f = open("%s.plt" % basename, "w")
+        f.write("""set style data line
+set xlabel 'allocation/free index'
+set ylabel 'bytes allocated'
+set term png
+set output '%s.png'
+plot '%s.dat'
+""" % (basename, basename))
+        f.close()
+        
+        f = open("%s.dat" % basename, "w")
+        sum = 0
+        for index in range(len(self.allocs)):
+            t = self.allocs[index]
+            if t[0] == "REQUEST":
+                sum += t[2]
+            if t[0] == "FREE":
+                sum -= self.allocsDict[t[1]][2]
+            f.write("%s %s\n" % (index, sum))
+        f.close()
+        
+        os.system("gnuplot %s.plt" % basename)
+
+def usage():
+    print "Usage: %s allocation_count {log|linear} min_request_size max_request_size {uniform|early} out_file" % sys.argv[0]
+
+if __name__ == "__main__":
+    
+    # expect the following arguments:
+    # 1: number of allocations
+    # 2: request size distribution: log / linear
+    # 3: min request size
+    # 4: max request size
+    # 5: deallocate index selection: uniform / triangular0.1 / trangular0.9
+    # 6: trace output file
+    
+    if len(sys.argv) < 6:
+        usage()
+        sys.exit(1)
+    
+    allocCount = int(sys.argv[1])
+    allocSizePolicy = sys.argv[2]
+    minRequestSize = int(sys.argv[3])
+    maxRequestSize = int(sys.argv[4])
+    deallocPolicy = sys.argv[5]
+    outFile = sys.argv[6]
+    
+    a = allocationStream(allocCount, allocSizePolicy, minRequestSize, maxRequestSize, deallocPolicy)
+    
+    a.makeGraphs()
+    
+    a.printStats()
+    
+    a.write(outFile)

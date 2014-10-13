@@ -1,0 +1,13 @@
+CC=gcc
+CFLAGS="-Wall -O3 -D_GNU_SOURCE -lm"
+DIFF="diff -b -B -q -s"
+VERBOSE=
+
+BASIC_PROGS="KMA_RM KMA_BUD"
+EC_PROGS="KMA_P2FL KMA_LZBUD KMA_MCK2"
+PROGS="KMA_RM KMA_BUD KMA_P2FL KMA_LZBUD KMA_MCK2"
+ORIG_FILES="kma.h kma.c kma_page.h kma_page.c 1.trace 2.trace 3.trace 4.trace 5.trace"
+SRCS="kma.c kma_page.c kma_dummy.c kma_rm.c kma_p2fl.c kma_mck2.c kma_bud.c kma_lzbud.c"
+TRACES="1.trace 2.trace 3.trace 4.trace 5.trace"
+COMPETITION_TRACE="5.trace"
+COMPETITION_BIN="kma_competition"

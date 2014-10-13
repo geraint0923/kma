@@ -1,0 +1,8 @@
+Here are the different algorithms:
+
+Dummy (provided) - KMA_DUMMY
+Resource Map - KMA_RM
+Power-of-two Free List - KMA_P2FL
+McKusick- Karels - KMA_MCK2
+Buddy System - KMA_BUD
+SVR4 Lazy Buddy - KMA_LZBUD

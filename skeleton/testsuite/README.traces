@@ -1,0 +1,20 @@
+1.trace.new: Short and sweet. Small allocations.
+100 allocations, 100 deallocations
+Maximum bytes allocated: 11340
+
+2.trace.new: Little bit longer. Larger allocations.
+1000 allocations, 1000 deallocations
+Maximum bytes allocated: 232674
+
+3.trace.new: Even longer. Even larger allocations.
+10000 allocations, 10000 deallocations
+Maximum bytes allocated: 4520591
+
+4.trace.new: Same as 3.trace.new, but with linear allocation size distribution and smaller maximum size.
+10000 allocations, 10000 deallocations
+Maximum bytes allocated: 7461135
+
+5.trace.new: Longest trace. High churn.
+100000 allocations, 100000 deallocations
+Maximum bytes allocated: 5801011
+

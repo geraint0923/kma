@@ -57,16 +57,63 @@
 
 /**************Implementation***********************************************/
 
+kma_page_t *first_page = NULL;
+
+struct page_info {
+	kma_page_t *page;
+	int ref_count;
+};
+
+struct free_node {
+	void *addr;
+	int size;
+	struct free_node *prev;
+	struct free_node *next;
+};
+
+struct rm_ctl {
+	int total_alloc;
+	int total_free;
+	struct free_node free_list;
+	struct free_node unused_list;
+};
+
+
+void add_page_for_free_node() {
+}
+
+void init_first_page() {
+	struct page_info *info;
+	struct rm_ctl *ctl;
+	struct free_node *cur, *end;
+	first_page = get_page();
+	memset(first_page->ptr, 0, first_page->size);
+	info = (struct page_info*)first_page->ptr;
+	ctl = (struct rm_ctl*)((char*)first_page->ptr + sizeof(struct page_info));
+	info->page = first_page;
+	info->ref_count = 0;
+	ctl->total_alloc = 0;
+	ctl->total_free = 0;
+	ctl->free_list.prev = ctl->free_list.next = &(ctl->free_list);
+	ctl->unused_list.prev = ctl->unused_list.next = &(ctl->unused_list);
+
+}
+
 void*
 kma_malloc(kma_size_t size)
 {
-  return NULL;
+	if(size + sizeof(void*) > PAGESIZE)
+		return NULL;
+	if(!first_page) {
+		init_first_page();
+	}
+	return NULL;
 }
 
 void
 kma_free(void* ptr, kma_size_t size)
 {
-  ;
+	;
 }
 
 #endif // KMA_RM

@@ -60,13 +60,15 @@
 void*
 kma_malloc(kma_size_t size)
 {
-  return NULL;
+	if(size + sizeof(void*) > PAGESIZE)
+		return NULL;
+	return NULL;
 }
 
-void 
+	void 
 kma_free(void* ptr, kma_size_t size)
 {
-  ;
+	;
 }
 
 #endif // KMA_BUD

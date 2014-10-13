@@ -18,7 +18,7 @@
 ###############################################################################
 
 # handin info
-TEAM = `whoami`
+TEAM = yyj963
 VERSION = `date +%Y%m%d%H%M%S`
 PROJ = kma
 
@@ -35,7 +35,7 @@ CFLAGS = -g -Wall -O2 -D HAVE_CONFIG_H
 
 DELIVERY = Makefile *.h *.c DOC
 PROGS = kma_dummy kma_rm kma_p2fl kma_mck2 kma_bud kma_lzbud
-SRCS = kma.c kma_page.c kma_dummy.c kma_rm.c kma_p2fl.c kma_mck2.c kma_bud.c kma_lzbud.c
+SRCS = kma.c kma_page.c kma_dummy.c kma_rm.c kma_p2fl.c kma_mck2.c kma_bud.c kma_lzbud.c utils.c
 OBJS = ${SRCS:.c=.o}
 
 VM_NAME = "Ubuntu_1404"

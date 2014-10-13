@@ -218,12 +218,10 @@ main(int argc, char* argv[])
   printf("Page Requested/Freed/In Use: %5d/%5d/%5d\n",
 	 stat->num_requested, stat->num_freed, stat->num_in_use);	
   
-  /*
   if (stat->num_requested != stat->num_freed || stat->num_in_use != 0)
     {
       error("not all pages freed", "");
     }
-	*/
   
   if(anyMismatches)
     {

@@ -62,7 +62,7 @@
 /**************Implementation***********************************************/
 
 #define SIZE_NUM	(20)
-#define SIZE_OFFSET	(3)
+#define SIZE_OFFSET	(4)
 
 #define HAVE_HEADER
 

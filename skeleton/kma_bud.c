@@ -62,14 +62,9 @@
 
 #define SIZE_NUM	(16)
 #define SIZE_OFFSET	(4)
-
 #define MAX_SIZE	PAGESIZE
-
 #define BITMAP_LEN	(PAGESIZE/(8*(1<<SIZE_OFFSET)))
-
 #define PAGE_INDEX_MASK	(~(PAGESIZE-1))
-
-
 #define PAGE_BIT_LEN	((PAGESIZE==8192)?(13):((PAGESIZE==4096)?12:11))
 
 
@@ -97,6 +92,7 @@ struct bud_ctl {
 	struct block_list free_list[SIZE_NUM];
 	kma_page_t *cur_page;
 	int cur_used;
+	int max_order;
 	struct page_item unused_list;
 	struct page_item work_page_list;
 	struct page_item ctl_page_list;
@@ -108,21 +104,21 @@ inline struct bud_ctl *get_bud_ctl() {
 	return (struct bud_ctl*)(first_page->ptr);
 }
 
-void list_append(struct page_item *item, struct page_item *header) {
+inline void list_append(struct page_item *item, struct page_item *header) {
 	item->prev = header->prev;
 	item->next = header;
 	header->prev = item;
 	item->prev->next = item;
 }
 
-void list_insert_head(struct page_item *item, struct page_item *header) {
+inline void list_insert_head(struct page_item *item, struct page_item *header) {
 	item->prev = header;
 	item->next = header->next;
 	header->next = item;
 	item->next->prev = item;
 }
 
-void list_insert_before(struct page_item *item, struct page_item *target) {
+inline void list_insert_before(struct page_item *item, struct page_item *target) {
 	item->prev = target->prev;
 	item->next = target;
 	item->prev->next = item;
@@ -130,34 +126,34 @@ void list_insert_before(struct page_item *item, struct page_item *target) {
 }
 
 
-void list_remove(struct page_item *item) {
+inline void list_remove(struct page_item *item) {
 	item->prev->next = item->next;
 	item->next->prev = item->prev;
 }
 
 
-void block_list_append(struct free_block *item, struct free_block *header) {
+inline void block_list_append(struct free_block *item, struct free_block *header) {
 	item->prev = header->prev;
 	item->next = header;
 	header->prev = item;
 	item->prev->next = item;
 }
 
-void block_list_insert_head(struct free_block *item, struct free_block *header) {
+inline void block_list_insert_head(struct free_block *item, struct free_block *header) {
 	item->prev = header;
 	item->next = header->next;
 	header->next = item;
 	item->next->prev = item;
 }
 
-void block_list_insert_before(struct free_block *item, struct free_block *target) {
+inline void block_list_insert_before(struct free_block *item, struct free_block *target) {
 	item->prev = target->prev;
 	item->next = target;
 	item->prev->next = item;
 	item->next->prev = item;
 }
 
-void block_list_remove(struct free_block *item) {
+inline void block_list_remove(struct free_block *item) {
 	item->prev->next = item->next;
 	item->next->prev = item->prev;
 }
@@ -206,6 +202,16 @@ void add_page_for_idx(int idx) {
 }
 */
 
+inline int get_list_index_by_size(int sz) {
+	int ret = 3;
+	sz >>= 3;
+	while(sz != 1) {
+		sz >>= 1;
+		ret++;
+	}
+	ret -= SIZE_OFFSET;
+	return ret <= 0 ? 0 : ret;
+}
 
 void init_first_page() {
 	struct bud_ctl *ctl;
@@ -219,7 +225,7 @@ void init_first_page() {
 
 	ctl->cur_page = NULL;
 	ctl->cur_used = 0;
-
+	ctl->max_order = get_list_index_by_size(PAGESIZE);
 	ctl->unused_list.prev = ctl->unused_list.next = &(ctl->unused_list);
 	ctl->ctl_page_list.prev = ctl->ctl_page_list.next = &(ctl->ctl_page_list);
 	ctl->work_page_list.prev = ctl->work_page_list.next = &(ctl->work_page_list);
@@ -273,19 +279,13 @@ clear_bit:
 	memset(item->bitmap, 0, BITMAP_LEN);
 }
 
-int get_list_index_by_size(int sz) {
-	int ret = 3;
-	sz >>= 3;
-	while(sz != 1) {
-		sz >>= 1;
-		ret++;
-	}
-	ret -= SIZE_OFFSET;
-	return ret <= 0 ? 0 : ret;
-}
 
 static inline int get_block_index(void *ptr) {
 	return (((unsigned long)ptr) >> SIZE_OFFSET) & ((PAGESIZE >> SIZE_OFFSET) - 1);
+}
+
+static inline void *get_block_addr(void *page_start, int idx) {
+	return (void*)((char*)page_start + (idx << SIZE_OFFSET));
 }
 
 static inline int get_page_map_index(void *ptr) {
@@ -303,7 +303,7 @@ static void insert_page_map(struct page_item *item) {
 	cur = ctl->page_map_list.next;
 	while(cur != &(ctl->page_map_list)) {
 		map_arr = (struct page_map*)cur->page->ptr;	
-		if(!map_arr[idx]) {
+		if(!map_arr[idx].page) {
 			found = 1;
 			break;
 		}
@@ -330,12 +330,68 @@ static struct page_item *find_page_item_by_addr(void *ptr) {
 	ptr = get_page_start(ptr);
 	while(cur != &(ctl->page_map_list)) {
 		map_arr = (struct page_map*)cur->page->ptr;
-		if(map_arr[idx] && map_arr[idx].page->page->ptr == ptr)
+		if(map_arr[idx].page && map_arr[idx].page->page->ptr == ptr)
 			return map_arr[idx].page;
 		cur = cur->next;
 	}
 	ptr = get_page_start(ptr);
 	return NULL;
+}
+
+void alloc_work_page() {
+	struct bud_ctl *ctl = get_bud_ctl();
+	struct page_item *item;
+	struct free_block *block;
+	assert(ctl);	
+	item = get_unused_page_item();
+	item->page = get_page();
+	init_bitmap(item);
+	insert_page_map(item);
+	block = (struct free_block*)item->page->ptr;
+	block_list_append(block, &(ctl->free_list[ctl->max_order].block));
+	list_append(item, &(ctl->work_page_list));
+}
+
+int check_buddy_free(unsigned char *bitmap, int begin_idx, int order) {
+	int i, cidx, bidx;
+	i = get_buddy_index(begin_idx, order);
+	cidx = i >> 3;
+	bidx = i & 0x7;
+	switch(order) {
+		case 0:
+		case 1:
+		case 2:
+			if(bitmap[cidx] & (((1<<(1<<order))-1)<<bidx))
+				return 0;
+			break;
+		case 3:
+			// for 8 bits
+			if(bitmap[cidx])
+				return 0;
+			break;
+		case 4:
+			if(((unsigned short*)bitmap)[cidx])
+				return 0;
+			// for 2 bytes
+			break;
+		default:
+			// for 4 bytes or more
+			for(i = 0; i < (1<<(order-5)); i++)
+				if(((unsigned int*)bitmap)[cidx])
+					return 0;
+			break;
+	}
+	return 1;
+}
+
+inline void set_block_used(unsigned char *bitmap, int begin_idx) {
+	// set one bit is enough
+	set_bit(bitmap, begin_idx);
+}
+
+inline void set_block_unused(unsigned char *bitmap, int begin_idx) {
+	// clear one bit is enough
+	clear_bit(bitmap, begin_idx);
 }
 
 void free_work_page(struct page_item *item) {
@@ -348,15 +404,66 @@ void free_work_page(struct page_item *item) {
 	cur = ctl->page_map_list.next;
 	while(cur != &(ctl->page_map_list)) {
 		map_arr = (struct page_map*)cur->page->ptr;
-		if(map_arr[idx] && map_arr[idx].page == item) {
+		if(map_arr[idx].page && map_arr[idx].page == item) {
 			map_arr[idx].page = NULL;
 			break;
 		}
 		cur = cur->next;
 	}
-	list_remove(item, &(ctl->work_page_list));
+	list_remove(item);
 	free_page(item->page);
 	put_unused_page_item(item);
+}
+
+struct free_block *get_free_block(int order) {
+	struct bud_ctl *ctl = get_bud_ctl();
+	int i, end_order = order;
+	struct free_block *block = NULL, *buddy_block;
+	assert(ctl);
+	for(i = order; i <= ctl->max_order; i++) {
+		block = ctl->free_list[i].block.next;
+		if(block) {
+			end_order = i;
+			block_list_remove(block);
+			break;
+		}
+		if(i == ctl->max_order) {
+			alloc_work_page();
+			block = ctl->free_list[i].block.next;
+			block_list_remove(block);
+		}
+	}
+	assert(block);
+	for(i = end_order - 1; i > order; i--) {
+		buddy_block = (struct free_block*)((char*)block + (1<<(i+SIZE_OFFSET)));
+		block_list_append(buddy_block, &(ctl->free_list[i].block));
+	}
+	return block;
+}
+
+void put_free_block(struct free_block *block, int order) {
+	struct bud_ctl *ctl = get_bud_ctl();
+	struct page_item *item;
+	int idx;
+	assert(ctl);
+	item = find_page_item_by_addr((void*)block);
+	idx = get_block_index((void*)block);
+	set_block_unused(item->bitmap, idx);
+	while(order < ctl->max_order) {
+		if(check_buddy_free(item->bitmap, idx, order)) {
+			block_list_remove((struct free_block*)get_block_addr(item->page->ptr, get_buddy_index(idx, order)));
+			idx = get_parent_index(idx, order);
+			order++;
+		}else {
+			block = (struct free_block*)get_block_addr(item->page->ptr, idx);
+			break;
+		}
+	}
+	assert(block);
+	if(order == ctl->max_order)
+		free_work_page(item);
+	else
+		block_list_insert_head(block, &(ctl->free_list[order].block));
 }
 
 
@@ -364,8 +471,7 @@ void*
 kma_malloc(kma_size_t size)
 {
 	struct bud_ctl *ctl;
-	int sz, idx;
-	struct free_block *block;
+	int idx;
 	if(size + sizeof(void*) > PAGESIZE)
 		return NULL;
 	if(!first_page) {
@@ -373,21 +479,10 @@ kma_malloc(kma_size_t size)
 	}
 	ctl = get_bud_ctl();
 
-	sz = roundup_pow2(size);
-
-	idx = get_list_index_by_size(sz);
-
-	if(ctl->free_list[idx].next == NULL) {
-		add_page_for_idx(idx);
-	}
-	block = ctl->free_list[idx].block.next;
-	assert(block);
-	ctl->free_list[idx].next = block->next;
-	block->next = (void*)&(ctl->free_list[idx]);
-
 	ctl->total_alloc++;
-	
-	return (void*)block;
+
+	idx = get_list_index_by_size(roundup_pow2(size));
+	return (void*)get_free_block(idx);
 }
 
 void
@@ -395,19 +490,11 @@ kma_free(void* ptr, kma_size_t size)
 {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *cur;
-	struct free_block *block;
-	struct block_list *list;
 	int count = 0;
 	kma_page_t *page_array[MAXPAGES];
 	assert(ctl);
 
-	block = (struct free_block*)ptr;
-	
-	list = &(ctl->free_list[get_list_index_by_size(roundup_pow2(size))]);
-
-	block->next = list->next;
-	list->next = block;
-
+	put_free_block((struct free_block*)ptr, get_list_index_by_size(roundup_pow2(size)));
 	ctl->total_free++;
 
 	if(ctl->total_alloc == ctl->total_free) {

@@ -197,7 +197,6 @@ void add_page_for_page_item() {
 		cur->bitmap = NULL;
 		list_insert_head(cur, &(ctl->unused_list));
 	}
-	printf("====page item\n");
 	cur = get_unused_page_item(0);
 	cur->page = page;
 	list_append(cur, &(ctl->ctl_page_list));
@@ -314,7 +313,6 @@ void init_bitmap(struct page_item *item) {
 		ii = get_unused_page_item(0);
 		ii->page = get_page();
 		list_append(ii, &(ctl->ctl_page_list));
-		printf("bitmap\n");
 		ctl->cur_used = 0;
 		ctl->cur_page = ii->page;
 	}
@@ -530,7 +528,7 @@ inline int __roundup_pow2(int v) {
 }
 
 
-	void*
+void*
 kma_malloc(kma_size_t size)
 {
 	struct bud_ctl *ctl;
@@ -548,7 +546,7 @@ kma_malloc(kma_size_t size)
 	return (void*)get_free_block(idx);
 }
 
-	void
+void
 kma_free(void* ptr, kma_size_t size)
 {
 	struct bud_ctl *ctl = get_bud_ctl();

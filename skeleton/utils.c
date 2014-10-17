@@ -22,29 +22,6 @@ inline void *get_page_end(void *addr) {
 }
 
 
-inline int get_buddy_index(int idx, int order) {
-	return idx ^ (1 << order);
-}
-
-inline int get_parent_index(int idx, int order) {
-	return idx & ~(1 << order);
-}
-
-inline void set_bit(unsigned char *bitmap, int idx) {
-//	bitmap[idx >> 3] |= 1 << (idx - ((idx >> 3) << 3));
-	bitmap[idx >> 3] |= 1 << (idx & 0x7);
-}
-
-inline void clear_bit(unsigned char *bitmap, int idx) {
-//	bitmap[idx >> 3] &= ~(1 << (idx - ((idx >> 3) << 3)));
-	bitmap[idx >> 3] &= ~(1 << (idx & 0x7));
-}
-
-inline int get_bit(unsigned char *bitmap, int idx) {
-//	return (bitmap[idx >> 3] & (1 << (idx - ((idx >> 3) << 3)))) != 0;
-	return (bitmap[idx >> 3] & (1 << (idx & 0x7))) != 0;
-}
-
 int get_set_bit_num(unsigned int i)
 {
 	i = i - ((i >> 1) & 0x55555555);

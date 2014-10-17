@@ -44,7 +44,6 @@
 /************Private include**********************************************/
 #include "kma_page.h"
 #include "kma.h"
-#include "utils.h"
 
 /************Defines and Typedefs*****************************************/
 /*  #defines and typedefs should have their names in all caps.
@@ -63,6 +62,35 @@
 
 #define SIZE_NUM	(20)
 #define SIZE_OFFSET	(4)
+
+inline int roundup_pow2(int v) {
+	v--;
+	v |= v >> 1;
+	v |= v >> 2;
+	v |= v >> 4;
+	v |= v >> 8;
+	v |= v >> 16;
+	v++;
+	return v;
+}
+
+
+inline void *get_page_start(void *addr) {
+	return (void*)((unsigned long)addr & ~((unsigned long)(PAGESIZE-1)));
+};
+
+inline void *get_page_end(void *addr) {
+	return (void*)((char*)get_page_start(addr) + PAGESIZE);
+}
+
+
+int get_set_bit_num(unsigned int i)
+{
+	i = i - ((i >> 1) & 0x55555555);
+	i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
+	return (((i + (i >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
+}
+
 
 
 static kma_page_t *first_page = NULL;

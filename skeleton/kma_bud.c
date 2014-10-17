@@ -273,7 +273,7 @@ void init_bitmap(struct page_item *item) {
 		ctl->cur_used = 0;
 		ctl->cur_page = ii->page;
 	}
-	item->bitmap = (unsigned char*)ctl->cur_page->ptr;
+	item->bitmap = (unsigned char*)ctl->cur_page->ptr + ctl->cur_used;
 	ctl->cur_used += BITMAP_LEN;
 clear_bit:
 	memset(item->bitmap, 0, BITMAP_LEN);
@@ -354,6 +354,7 @@ void alloc_work_page() {
 
 int check_buddy_free(unsigned char *bitmap, int begin_idx, int order) {
 	int i, cidx, bidx;
+	unsigned int *arr;
 	i = get_buddy_index(begin_idx, order);
 	cidx = i >> 3;
 	bidx = i & 0x7;
@@ -370,14 +371,15 @@ int check_buddy_free(unsigned char *bitmap, int begin_idx, int order) {
 				return 0;
 			break;
 		case 4:
-			if(((unsigned short*)bitmap)[cidx])
+			if(*((unsigned short*)(bitmap+cidx)))
 				return 0;
 			// for 2 bytes
 			break;
 		default:
 			// for 4 bytes or more
+			arr = (unsigned int*)(bitmap+cidx);
 			for(i = 0; i < (1<<(order-5)); i++)
-				if(((unsigned int*)bitmap)[cidx])
+				if(arr[i])
 					return 0;
 			break;
 	}
@@ -419,10 +421,11 @@ struct free_block *get_free_block(int order) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	int i, end_order = order;
 	struct free_block *block = NULL, *buddy_block;
+	struct page_item *item;
 	assert(ctl);
 	for(i = order; i <= ctl->max_order; i++) {
 		block = ctl->free_list[i].block.next;
-		if(block) {
+		if(block != &(ctl->free_list[i].block)) {
 			end_order = i;
 			block_list_remove(block);
 			break;
@@ -431,13 +434,17 @@ struct free_block *get_free_block(int order) {
 			alloc_work_page();
 			block = ctl->free_list[i].block.next;
 			block_list_remove(block);
+			end_order = i;
 		}
 	}
 	assert(block);
-	for(i = end_order - 1; i > order; i--) {
+	for(i = end_order - 1; i >= order; i--) {
 		buddy_block = (struct free_block*)((char*)block + (1<<(i+SIZE_OFFSET)));
 		block_list_append(buddy_block, &(ctl->free_list[i].block));
 	}
+	item = find_page_item_by_addr((void*)block);
+	assert(item);
+	set_block_used(item->bitmap, get_block_index(block));
 	return block;
 }
 

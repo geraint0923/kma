@@ -473,6 +473,17 @@ void put_free_block(struct free_block *block, int order) {
 		block_list_insert_head(block, &(ctl->free_list[order].block));
 }
 
+inline int __roundup_pow2(int v) {
+	v--;
+	v |= v >> 1;
+	v |= v >> 2;
+	v |= v >> 4;
+	v |= v >> 8;
+	v |= v >> 16;
+	v++;
+	return v;
+}
+
 
 void*
 kma_malloc(kma_size_t size)
@@ -488,7 +499,7 @@ kma_malloc(kma_size_t size)
 
 	ctl->total_alloc++;
 
-	idx = get_list_index_by_size(roundup_pow2(size));
+	idx = get_list_index_by_size(__roundup_pow2(size));
 	return (void*)get_free_block(idx);
 }
 
@@ -501,7 +512,7 @@ kma_free(void* ptr, kma_size_t size)
 	kma_page_t *page_array[MAXPAGES];
 	assert(ctl);
 
-	put_free_block((struct free_block*)ptr, get_list_index_by_size(roundup_pow2(size)));
+	put_free_block((struct free_block*)ptr, get_list_index_by_size(__roundup_pow2(size)));
 	ctl->total_free++;
 
 	if(ctl->total_alloc == ctl->total_free) {

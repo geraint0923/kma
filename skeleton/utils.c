@@ -1,7 +1,7 @@
 #include "utils.h"
 #include "kma_page.h"
 
-int roundup_pow2(int v) {
+inline int roundup_pow2(int v) {
 	v--;
 	v |= v >> 1;
 	v |= v >> 2;
@@ -13,20 +13,20 @@ int roundup_pow2(int v) {
 }
 
 
-void *get_page_start(void *addr) {
+inline void *get_page_start(void *addr) {
 	return (void*)((unsigned long)addr & ~((unsigned long)(PAGESIZE-1)));
 };
 
-void *get_page_end(void *addr) {
+inline void *get_page_end(void *addr) {
 	return (void*)((char*)get_page_start(addr) + PAGESIZE);
 }
 
 
-int get_buddy_index(int idx, int order) {
+inline int get_buddy_index(int idx, int order) {
 	return idx ^ (1 << order);
 }
 
-int get_parent_index(int idx, int order) {
+inline int get_parent_index(int idx, int order) {
 	return idx & ~(1 << order);
 }
 

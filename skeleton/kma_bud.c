@@ -183,7 +183,7 @@ inline void block_list_remove(struct free_block *item) {
 }
 
 
-extern struct page_item *get_unused_page_item();
+extern struct page_item *get_unused_page_item(int need_bitmap);
 
 void add_page_for_page_item() {
 	struct bud_ctl *ctl = get_bud_ctl();
@@ -195,9 +195,10 @@ void add_page_for_page_item() {
 	end = (struct page_item*)get_page_end(cur);
 	for(; cur + 1 < end; cur++) {
 		cur->bitmap = NULL;
-		list_append(cur, &(ctl->unused_list));
+		list_insert_head(cur, &(ctl->unused_list));
 	}
-	cur = get_unused_page_item();
+	printf("====page item\n");
+	cur = get_unused_page_item(0);
 	cur->page = page;
 	list_append(cur, &(ctl->ctl_page_list));
 }
@@ -279,21 +280,27 @@ void init_first_page() {
 	}
 }
 
-struct page_item *get_unused_page_item() {
+struct page_item *get_unused_page_item(int need_bitmap) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *node;
 	assert(ctl);
 	if(ctl->unused_list.prev == &(ctl->unused_list))
 		add_page_for_page_item();
-	node = ctl->unused_list.next;
+	if(need_bitmap)
+		node = ctl->unused_list.prev;
+	else
+		node = ctl->unused_list.next;
 	list_remove(node);
 	return node;
 };
 
-void put_unused_page_item(struct page_item *node) {
+void put_unused_page_item(struct page_item *node, int have_bitmap) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	assert(node);
-	list_insert_head(node, &(ctl->unused_list));
+	if(have_bitmap)
+		list_append(node, &(ctl->unused_list));
+	else
+		list_insert_head(node, &(ctl->unused_list));
 }
 
 void init_bitmap(struct page_item *item) {
@@ -304,9 +311,10 @@ void init_bitmap(struct page_item *item) {
 	if(item->bitmap)
 		goto clear_bit;
 	if(!(ctl->cur_page && (ctl->cur_used + BITMAP_LEN <= PAGESIZE))) {
-		ii = get_unused_page_item();
+		ii = get_unused_page_item(0);
 		ii->page = get_page();
 		list_append(ii, &(ctl->ctl_page_list));
+		printf("bitmap\n");
 		ctl->cur_used = 0;
 		ctl->cur_page = ii->page;
 	}
@@ -347,7 +355,7 @@ static void insert_page_map(struct page_item *item) {
 		cur = cur->next;
 	}
 	if(!found) {
-		cur = get_unused_page_item();
+		cur = get_unused_page_item(0);
 		cur->page = get_page();
 		memset(cur->page->ptr, 0, cur->page->size);
 		list_append(cur, &(ctl->page_map_list));
@@ -380,7 +388,7 @@ void alloc_work_page() {
 	struct page_item *item;
 	struct free_block *block;
 	assert(ctl);	
-	item = get_unused_page_item();
+	item = get_unused_page_item(1);
 	item->page = get_page();
 	init_bitmap(item);
 	insert_page_map(item);
@@ -451,7 +459,7 @@ void free_work_page(struct page_item *item) {
 	}
 	list_remove(item);
 	free_page(item->page);
-	put_unused_page_item(item);
+	put_unused_page_item(item, 1);
 }
 
 struct free_block *get_free_block(int order) {
@@ -507,7 +515,7 @@ void put_free_block(struct free_block *block, int order) {
 	if(order == ctl->max_order)
 		free_work_page(item);
 	else
-		block_list_insert_head(block, &(ctl->free_list[order].block));
+		block_list_append(block, &(ctl->free_list[order].block));
 }
 
 inline int __roundup_pow2(int v) {

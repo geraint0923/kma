@@ -59,12 +59,12 @@
 
 /**************Implementation***********************************************/
 
-#define SIZE_NUM	(16)
 #define SIZE_OFFSET	(5)
 #define MAX_SIZE	PAGESIZE
 #define BITMAP_LEN	(PAGESIZE/(8*(1<<SIZE_OFFSET)))
 #define PAGE_INDEX_MASK	(~(PAGESIZE-1))
 #define PAGE_BIT_LEN	((PAGESIZE==8192)?(13):((PAGESIZE==4096)?12:11))
+#define SIZE_NUM	(PAGE_BIT_LEN+1-SIZE_OFFSET)
 
 
 inline void *get_page_start(void *addr) {

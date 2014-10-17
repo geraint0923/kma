@@ -66,17 +66,6 @@
 #define PAGE_INDEX_MASK	(~(PAGESIZE-1))
 #define PAGE_BIT_LEN	((PAGESIZE==8192)?(13):((PAGESIZE==4096)?12:11))
 
-inline int roundup_pow2(int v) {
-	v--;
-	v |= v >> 1;
-	v |= v >> 2;
-	v |= v >> 4;
-	v |= v >> 8;
-	v |= v >> 16;
-	v++;
-	return v;
-}
-
 
 inline void *get_page_start(void *addr) {
 	return (void*)((unsigned long)addr & ~((unsigned long)(PAGESIZE-1)));

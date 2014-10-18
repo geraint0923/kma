@@ -85,8 +85,6 @@ int get_set_bit_num(unsigned int i)
 }
 
 
-
-
 static kma_page_t *first_page = NULL;
 struct page_item {
 	kma_page_t *page;
@@ -102,6 +100,7 @@ struct free_block {
 	struct free_block *next;
 };
 struct block_list {
+	int slack;
 	struct free_block block;
 };
 struct bud_ctl {
@@ -293,6 +292,7 @@ void init_first_page() {
 	}
 
 	for(i = 0; i < SIZE_NUM; i++) {
+		ctl->free_list[i].slack = 0;
 		ctl->free_list[i].block.next = ctl->free_list[i].block.prev = &(ctl->free_list[i].block);
 	}
 }
@@ -457,6 +457,10 @@ inline void set_block_unused(unsigned char *bitmap, int begin_idx) {
 	clear_bit(bitmap, begin_idx);
 }
 
+inline int test_block_unused(unsigned char *bitmap, int begin_idx) {
+	return get_bit(bitmap, begin_idx) == 0;
+}
+
 void free_work_page(struct page_item *item) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *cur;
@@ -489,6 +493,14 @@ struct free_block *get_free_block(int order) {
 		if(block != &(ctl->free_list[i].block)) {
 			end_order = i;
 			block_list_remove(block);
+			item = find_page_item_by_addr((void*)block);
+			if(test_block_unused(item->bitmap, get_block_index(block))) {
+				// local free
+				ctl->free_list[i].slack += 2;
+			} else {
+				// global free
+				ctl->free_list[i].slack += 1;
+			}
 			break;
 		}
 		if(i == ctl->max_order) {
@@ -501,6 +513,8 @@ struct free_block *get_free_block(int order) {
 	assert(block);
 	for(i = end_order - 1; i >= order; i--) {
 		buddy_block = (struct free_block*)((char*)block + (1<<(i+SIZE_OFFSET)));
+		item = find_page_item_by_addr((void*)buddy_block);
+		set_block_used(item->bitmap, get_block_index(buddy_block));
 		block_list_append(buddy_block, &(ctl->free_list[i].block));
 	}
 	item = find_page_item_by_addr((void*)block);
@@ -509,6 +523,7 @@ struct free_block *get_free_block(int order) {
 	return block;
 }
 
+/*
 void put_free_block(struct free_block *block, int order) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *item;
@@ -516,23 +531,148 @@ void put_free_block(struct free_block *block, int order) {
 	assert(ctl);
 	item = find_page_item_by_addr((void*)block);
 	idx = get_block_index((void*)block);
-	set_block_unused(item->bitmap, idx);
-	while(order < ctl->max_order) {
-		if(check_buddy_free(item->bitmap, idx, order)) {
-			block_list_remove((struct free_block*)get_block_addr(item->page->ptr, get_buddy_index(idx, order)));
-			idx = get_parent_index(idx, order);
-			order++;
-		}else {
-			block = (struct free_block*)get_block_addr(item->page->ptr, idx);
-			break;
-		}
-	}
-	assert(block);
-	if(order == ctl->max_order)
-		free_work_page(item);
-	else
+
+	if(item->slack >= 2) {
 		block_list_append(block, &(ctl->free_list[order].block));
+		item->slack -= 2;
+	} else if(item->slack == 1) {
+		set_block_unused(item->bitmap, idx);
+		while(order < ctl->max_order) {
+			if(check_buddy_free(item->bitmap, idx, order)) {
+				block_list_remove((struct free_block*)get_block_addr(item->page->ptr, 
+							get_buddy_index(idx, order)));
+				idx = get_parent_index(idx, order);
+				block = (struct free_block*)get_block_addr(item->page->ptr, idx);
+				order++;
+				break;
+			}else {
+				block = (struct free_block*)get_block_addr(item->page->ptr, idx);
+				break;
+			}
+		}
+		assert(block);
+		if(order == ctl->max_order)
+			free_work_page(item);
+		else
+			block_list_append(block, &(ctl->free_list[order].block));
+
+		item->slack = 0;
+	} else if(item->slack == 0) {
+	} else {
+		assert("no possible branch" == NULL);
+	}
 }
+*/
+
+void put_free_block(struct free_block *block, int order) {
+	struct bud_ctl *ctl = get_bud_ctl();
+	struct page_item *item;
+	int idx;
+	assert(ctl);
+	item = find_page_item_by_addr((void*)block);
+	idx = get_block_index((void*)block);
+
+	switch(ctl->free_list[order].slack) {
+		case 0:
+			set_block_unused(item->bitmap, idx);
+			if(order < ctl->max_order) {
+				if(check_buddy_free(item->bitmap, idx, order)) {
+					block_list_remove((struct free_block*)get_block_addr(item->page->ptr, 
+								get_buddy_index(idx, order)));
+					idx = get_parent_index(idx, order);
+					block = (struct free_block*)get_block_addr(item->page->ptr, idx);
+					set_block_used(item->bitmap, idx);
+					put_free_block(block, order+1);
+				}else {
+					block_list_insert_head(block, &(ctl->free_list[order].block));
+				}
+			} else if(order == ctl->max_order) {
+				free_work_page(item);
+				break;
+			} else {
+				assert("impossible branch here" == NULL);
+			}
+
+			order++;
+			// select on locally free block of order + 1, mark it globally and coalesce if possible
+			block = ctl->free_list[order].block.prev;
+			while(block != &(ctl->free_list[order].block)) {
+				item = find_page_item_by_addr((void*)block);
+				idx = get_block_index((void*)block);
+				if(test_block_unused(item->bitmap, idx)) {
+					block = block->prev;
+				} else {
+					block_list_remove(block);
+					set_block_unused(item->bitmap, idx);
+					if(order < ctl->max_order) {
+						if(check_buddy_free(item->bitmap, idx, order)) {
+							block_list_remove((struct free_block*)get_block_addr(item->page->ptr, 
+										get_buddy_index(idx, order)));
+							idx = get_parent_index(idx, order);
+							block = (struct free_block*)get_block_addr(item->page->ptr, idx);
+							set_block_used(item->bitmap, idx);
+							put_free_block(block, order+1);
+						}else {
+							block_list_insert_head(block, &(ctl->free_list[order].block));
+						}
+					} else if(order == ctl->max_order)
+						free_work_page(item);
+					else {
+						assert("impossible branch here" == NULL);
+					}
+					break;
+				}
+			}
+
+			break;
+		case 1 :
+			set_block_unused(item->bitmap, idx);
+			if(order < ctl->max_order) {
+				if(check_buddy_free(item->bitmap, idx, order)) {
+					block_list_remove((struct free_block*)get_block_addr(item->page->ptr, 
+								get_buddy_index(idx, order)));
+					idx = get_parent_index(idx, order);
+					block = (struct free_block*)get_block_addr(item->page->ptr, idx);
+					set_block_used(item->bitmap, idx);
+					put_free_block(block, order+1);
+				}else {
+					block_list_append(block, &(ctl->free_list[order].block));
+				}
+			} else if(order == ctl->max_order)
+				free_work_page(item);
+			else {
+				assert("impossible branch here" == NULL);
+			}
+
+			ctl->free_list[order].slack = 0;
+			break;
+		default:
+			assert(ctl->free_list[order].slack >= 0);
+			block_list_append(block, &(ctl->free_list[order].block));
+			ctl->free_list[order].slack -= 2;
+			break;
+	}
+
+}
+
+/*
+   set_block_unused(item->bitmap, idx);
+   while(order < ctl->max_order) {
+   if(check_buddy_free(item->bitmap, idx, order)) {
+   block_list_remove((struct free_block*)get_block_addr(item->page->ptr, get_buddy_index(idx, order)));
+   idx = get_parent_index(idx, order);
+   order++;
+   }else {
+   block = (struct free_block*)get_block_addr(item->page->ptr, idx);
+   break;
+   }
+   }
+   assert(block);
+   if(order == ctl->max_order)
+   free_work_page(item);
+   else
+   block_list_append(block, &(ctl->free_list[order].block));
+   */
 
 inline int __roundup_pow2(int v) {
 	v--;
@@ -551,6 +691,7 @@ kma_malloc(kma_size_t size)
 {
 	struct bud_ctl *ctl;
 	int idx;
+	void *blk;
 	if(size + sizeof(void*) > PAGESIZE)
 		return NULL;
 	if(!first_page) {
@@ -561,8 +702,10 @@ kma_malloc(kma_size_t size)
 	ctl->total_alloc++;
 
 	idx = get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition, __roundup_pow2(size));
-	return (void*)get_free_block(idx);
+	blk = (void*)get_free_block(idx);
+	return blk;
 }
+
 
 void
 kma_free(void* ptr, kma_size_t size)

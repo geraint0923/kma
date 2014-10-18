@@ -355,12 +355,14 @@ static void remove_page_map_by_addr(void*);
 struct page_item *get_unused_page_item(int need_bitmap) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *node, *tp;
+	unsigned char *bmp;
 	assert(ctl);
 	if(ctl->unused_list.prev == &(ctl->unused_list))
 		add_page_for_page_item();
 	if(need_bitmap) {
+		bmp = get_bitmap();
 		node = ctl->unused_list.prev;
-		node->bitmap = get_bitmap();
+		node->bitmap = bmp;
 	} else
 		node = ctl->unused_list.next;
 	list_remove(node);

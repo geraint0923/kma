@@ -376,7 +376,10 @@ void put_unused_page_item(struct page_item *node, int have_bitmap) {
 	if(have_bitmap) {
 		put_bitmap((unsigned char*)node->bitmap);
 	}
-	list_append(node, &(ctl->unused_list));
+	if(first_page->ptr == get_page_start((void*)node))
+		list_insert_head(node, &(ctl->unused_list));
+	else
+		list_append(node, &(ctl->unused_list));
 	tp = find_page_item_by_addr((void*)node);
 	tp->bitmap--;
 	if(!(tp->bitmap)) {
@@ -411,7 +414,10 @@ void put_bitmap(unsigned char *bmp) {
 	struct page_item *tp;
 	unsigned char *cur, *end;
 	assert(ctl);
-	list_insert_head((struct page_item*)bmp, &(ctl->bitmap_list));
+	if(first_page->ptr == get_page_start((void*)bmp))
+		list_insert_head((struct page_item*)bmp, &(ctl->bitmap_list));
+	else
+		list_append((struct page_item*)bmp, &(ctl->bitmap_list));
 	tp = find_page_item_by_addr((void*)bmp);
 	tp->bitmap--;
 	if(!(tp->bitmap)) {

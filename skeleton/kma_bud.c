@@ -587,12 +587,16 @@ void free_work_page(struct page_item *item) {
 	put_unused_page_item(item, 1);
 }
 
-struct free_block *get_free_block(int order) {
+struct free_block *get_free_block(int order, int sz) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	int i, end_order = order;
 	struct free_block *block = NULL, *buddy_block;
 	struct page_item *item;
 	assert(ctl);
+
+	if(sz <= sizeof(struct page_item))
+		return (struct free_block*)get_unused_page_item(0);
+
 	for(i = order; i <= ctl->max_order; i++) {
 		block = ctl->free_list[i].block.next;
 		if(block != &(ctl->free_list[i].block)) {
@@ -618,11 +622,18 @@ struct free_block *get_free_block(int order) {
 	return block;
 }
 
-void put_free_block(struct free_block *block, int order) {
+void put_free_block(struct free_block *block, int order, int sz) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *item;
 	int idx;
 	assert(ctl);
+
+	if(sz <= sizeof(struct page_item)) {
+		put_unused_page_item((struct page_item*)block, 0);
+		return;
+	}
+
+
 	item = find_page_item_by_addr((void*)block);
 	idx = get_block_index((void*)block);
 	set_block_unused(item->bitmap, idx);
@@ -670,7 +681,7 @@ kma_malloc(kma_size_t size)
 	ctl->total_alloc++;
 
 	idx = get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition, __roundup_pow2(size));
-	return (void*)get_free_block(idx);
+	return (void*)get_free_block(idx, size);
 }
 
 void
@@ -683,7 +694,7 @@ kma_free(void* ptr, kma_size_t size)
 	assert(ctl);
 
 	put_free_block((struct free_block*)ptr, get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition,
-				__roundup_pow2(size)));
+				__roundup_pow2(size)), size);
 	ctl->total_free++;
 
 	if(ctl->total_alloc == ctl->total_free) {

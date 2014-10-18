@@ -288,7 +288,8 @@ inline int get_list_index_by_size(int *table, int sz) {
 void init_first_page() {
 	struct bud_ctl *ctl;
 	struct page_item *fp, *rsv, *cur, *end;
-	int i;
+	char *st, *ed;
+	int i, count;
 	int _MultiplyDeBruijnBitPosition[32] = {
 		0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8, 
 		31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
@@ -311,8 +312,7 @@ void init_first_page() {
 	ctl->page_map_list.prev = ctl->page_map_list.next = &(ctl->page_map_list);
 	cur = (struct page_item*)((char*)ctl + sizeof(struct bud_ctl));
 	cur->bitmap = NULL;
-	cur->bitmap++;
-	cur->bitmap++;
+	cur->bitmap += 999999;
 	//list_append(cur, &(ctl->ctl_page_list));
 	cur->page = first_page;
 	fp = cur;
@@ -320,9 +320,22 @@ void init_first_page() {
 	rsv = cur;
 	cur++;
 	end = (struct page_item*)get_page_end((void*)cur);
+	count = ((unsigned long)((char*)end-(char*)cur)) / (3 * sizeof(struct page_item));
+	/*
 	for(; cur + 1 < end; cur++) {
 		cur->bitmap = NULL;
 		list_append(cur, &(ctl->unused_list));
+	}
+	*/
+	while(count > 0) {
+		list_append(cur, &(ctl->unused_list));
+		cur++;
+		count--;
+	}
+	st = (char*)cur;
+	ed = (char*)end;
+	for(; st + BITMAP_LEN <= ed; st += BITMAP_LEN) {
+		list_append((struct page_item*)st, &(ctl->bitmap_list));
 	}
 
 	for(i = 0; i < SIZE_NUM; i++) {
@@ -362,9 +375,8 @@ void put_unused_page_item(struct page_item *node, int have_bitmap) {
 	assert(node);
 	if(have_bitmap) {
 		put_bitmap((unsigned char*)node->bitmap);
-		list_append(node, &(ctl->unused_list));
-	} else
-		list_insert_head(node, &(ctl->unused_list));
+	}
+	list_append(node, &(ctl->unused_list));
 	tp = find_page_item_by_addr((void*)node);
 	tp->bitmap--;
 	if(!(tp->bitmap)) {
@@ -399,7 +411,7 @@ void put_bitmap(unsigned char *bmp) {
 	struct page_item *tp;
 	unsigned char *cur, *end;
 	assert(ctl);
-	list_append((struct page_item*)bmp, &(ctl->bitmap_list));
+	list_insert_head((struct page_item*)bmp, &(ctl->bitmap_list));
 	tp = find_page_item_by_addr((void*)bmp);
 	tp->bitmap--;
 	if(!(tp->bitmap)) {

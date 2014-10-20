@@ -384,16 +384,16 @@ void put_unused_page_item(struct page_item *node, int have_bitmap) {
 		list_append(node, &(ctl->unused_list));
 	tp = find_page_item_by_addr((void*)node);
 	tp->bitmap--;
-	if(!(tp->bitmap)) {
+	if(tp->bitmap == (unsigned char*)0x1) {
 		cur = (struct page_item*)tp->page->ptr;
 		end = (struct page_item*)((char*)cur + PAGESIZE);
 		for(; cur + 1 <= end; cur++){
 			list_remove(cur);
 		}
 		remove_page_map_by_addr(tp->page->ptr);
-		list_remove(tp);
+//		list_remove(tp);
 		free_page(tp->page);
-		put_unused_page_item(tp, 0);
+		//put_unused_page_item(tp, 0);
 	}
 }
 

@@ -1,43 +1,77 @@
 
 To compare different algorithms easier, I define that
-
 Efficiency = Total Used Memory Size / Total Request Memory Size
-
 and I use the result of testsuite/5.trace for comparision.
+
+To measure preciser latencies, I used a high-resolution timer in Linux,
+which is called clock_gettime() in the code.
 
 
 Basic Points:
 
 (1) Resourcce Map
 
-Best Efficiency = 98.96%
-Worst Efficiency = 0.001%
-Average Efficiency = 68.37%
+i. Efficiency
+Best = 98.96%
+Worst = 0.001%
+Average = 68.37%
 
+ii. Latency(nanosecond)
+				Best		Worst		Average
+KMA_MALLOC		28			3914349		4359
+KMA_FREE		30			1056799		4549
 
 (2) Buddy System
 
-Best Efficiency = 71.40%
-Worst Efficiency = 0.15%
-Average Efficiency = 64.69%
+i. Efficiency
+Best  = 71.40%
+Worst  = 0.15%
+Average  = 64.69%
+
+ii. Latency(nanosecond)
+				Best		Worst		Average
+KMA_MALLOC		36			3885793		133
+KMA_FREE		43			991815		112
 
 
 Extra Points:
 
 (1) SVR4 Lazy Buddy
 
-Best Efficiency = 71.27%
-Worst Efficiency = 0.002%
-Average Efficiency = 62.25%
+i. Efficiency
+Best  = 71.27%
+Worst  = 0.002%
+Average  = 62.25%
+
+ii. Latency(nanosecond)
+				Best		Worst		Average
+KMA_MALLOC		43			3837888		142
+KMA_FREE		37			1116976		111
+
 
 (2) Power-of two Free List
 
-Best Efficiency = 70.53%
-Worst Efficiency = 0.001%
-Average Efficiency = 56.07%
+i. Efficiency
+Best  = 70.53%
+Worst  = 0.001%
+Average  = 56.07%
+
+ii. Latency(nanosecond)
+				Best		Worst		Average
+KMA_MALLOC		34			3795693		184
+KMA_FREE		24			1084155		47
+
 
 (3) McKusick-Karels
 
-Best Efficiency = 71.68%
-Worst Efficiency = 0.001%
+i. Efficiency
+Best  = 71.68%
+Worst  = 0.001%
 Average Effiency = 57.20%
+
+ii. Latency(nanosecond)
+				Best		Worst		Average
+KMA_MALLOC		25			3986018		101
+KMA_FREE		23			1055896		52
+
+

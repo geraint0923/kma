@@ -34,3 +34,33 @@ end
 puts "Max Rate #{max_idx} => #{max_rate}"
 puts "Min Rate #{min_idx} => #{min_rate}"
 puts "Average Rate #{total/count}"
+
+malloc_best = 99999999999999999
+free_best = 99999999999999999
+malloc_worst = 0
+free_worst = 0
+malloc_time = 0
+free_time = 0
+malloc_count = 0
+free_count = 0
+
+File.open("kma_timing.dat").each do |line|
+	sl = line.split
+	cmd = sl[0]
+	timing = sl[1].to_i
+	if cmd == "REQUEST"
+		malloc_best = timing if timing < malloc_best
+		malloc_worst = timing if timing > malloc_worst
+		malloc_time += timing
+		malloc_count += 1
+	elsif cmd == "FREE"
+		free_best = timing if timing < free_best
+		free_worst = timing if timing > free_worst
+		free_time += timing
+		free_count += 1
+	end
+	
+end
+
+puts "Malloc best #{malloc_best} worst #{malloc_worst} average #{malloc_time/malloc_count}"
+puts "Free best #{free_best} worst #{free_worst} average #{free_time/free_count}"

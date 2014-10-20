@@ -31,5 +31,6 @@ File.open("kma_output.dat").each do |line|
 	idx += 1
 #	puts "used #{used}    allocated #{allocated} max_rate #{max_rate} min_rate #{min_rate}"
 end
-puts "total #{total} idx #{idx} average #{total/idx}"
-puts "max_rate #{max_idx} => #{max_rate} ||  min_rate #{min_idx} => #{min_rate}"
+puts "Max Rate #{max_idx} => #{max_rate}"
+puts "Min Rate #{min_idx} => #{min_rate}"
+puts "Average Rate #{total/count}"

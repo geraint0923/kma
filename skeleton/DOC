@@ -10,15 +10,15 @@ Basic Points:
 
 (1) Resourcce Map
 
-Max Efficiency = 98.96%
-Min Efficiency = 0.001%
+Best Efficiency = 98.96%
+Worst Efficiency = 0.001%
 Average Efficiency = 68.37%
 
 
 (2) Buddy System
 
-Max Efficiency = 71.40%
-Min Efficiency = 0.15%
+Best Efficiency = 71.40%
+Worst Efficiency = 0.15%
 Average Efficiency = 64.69%
 
 
@@ -26,18 +26,18 @@ Extra Points:
 
 (1) SVR4 Lazy Buddy
 
-Max Efficiency = 71.27%
-Min Efficiency = 0.002%
+Best Efficiency = 71.27%
+Worst Efficiency = 0.002%
 Average Efficiency = 62.25%
 
 (2) Power-of two Free List
 
-Max Efficiency = 70.53%
-Min Efficiency = 0.001%
+Best Efficiency = 70.53%
+Worst Efficiency = 0.001%
 Average Efficiency = 56.07%
 
 (3) McKusick-Karels
 
-Max Efficiency = 71.68%
-Min Efficiency = 0.001%
+Best Efficiency = 71.68%
+Worst Efficiency = 0.001%
 Average Effiency = 57.20%

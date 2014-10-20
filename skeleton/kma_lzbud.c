@@ -126,17 +126,14 @@ inline int get_parent_index(int idx, int order) {
 }
 
 inline void set_bit(unsigned char *bitmap, int idx) {
-//	bitmap[idx >> 3] |= 1 << (idx - ((idx >> 3) << 3));
 	bitmap[idx >> 3] |= 1 << (idx & 0x7);
 }
 
 inline void clear_bit(unsigned char *bitmap, int idx) {
-//	bitmap[idx >> 3] &= ~(1 << (idx - ((idx >> 3) << 3)));
 	bitmap[idx >> 3] &= ~(1 << (idx & 0x7));
 }
 
 inline int get_bit(unsigned char *bitmap, int idx) {
-//	return (bitmap[idx >> 3] & (1 << (idx - ((idx >> 3) << 3)))) != 0;
 	return (bitmap[idx >> 3] & (1 << (idx & 0x7))) != 0;
 }
 
@@ -219,41 +216,7 @@ void add_page_for_page_item() {
 	list_append(cur, &(ctl->ctl_page_list));
 }
 
-/*
-void add_page_for_idx(int idx) {
-	struct bud_ctl *ctl = get_bud_ctl();
-	int sz = 1 << (idx + SIZE_OFFSET);
-	char *cur, *end;
-	struct free_block *block;
-	kma_page_t *page;
-	struct page_item *item;
-	assert(ctl);
-	page = get_page();
-	cur = (char*)(page->ptr);
-	end = (char*)get_page_end(cur);
-	for(; cur + sz <= end; cur += sz) {
-		block = (struct free_block*)cur;
-		block->next = ctl->free_list[idx].next;
-		ctl->free_list[idx].next = block;
-	}
-	item = get_unused_page_item();
-	assert(item);
-	item->page = page;
-	list_append(item, &(ctl->page_list));
-}
-*/
-
 inline int get_list_index_by_size(int *table, int sz) {
-	/*
-	int ret = 3;
-	sz >>= 3;
-	while(sz != 1) {
-		sz >>= 1;
-		ret++;
-	}
-	ret -= SIZE_OFFSET;
-	return ret <= 0 ? 0 : ret;
-	*/
 	int ret = table[(unsigned int)(sz*0x077CB531U)>>27];
 	ret -= SIZE_OFFSET;
 	return ret <= 0 ? 0 : ret;
@@ -523,47 +486,6 @@ struct free_block *get_free_block(int order) {
 	return block;
 }
 
-/*
-void put_free_block(struct free_block *block, int order) {
-	struct bud_ctl *ctl = get_bud_ctl();
-	struct page_item *item;
-	int idx;
-	assert(ctl);
-	item = find_page_item_by_addr((void*)block);
-	idx = get_block_index((void*)block);
-
-	if(item->slack >= 2) {
-		block_list_append(block, &(ctl->free_list[order].block));
-		item->slack -= 2;
-	} else if(item->slack == 1) {
-		set_block_unused(item->bitmap, idx);
-		while(order < ctl->max_order) {
-			if(check_buddy_free(item->bitmap, idx, order)) {
-				block_list_remove((struct free_block*)get_block_addr(item->page->ptr, 
-							get_buddy_index(idx, order)));
-				idx = get_parent_index(idx, order);
-				block = (struct free_block*)get_block_addr(item->page->ptr, idx);
-				order++;
-				break;
-			}else {
-				block = (struct free_block*)get_block_addr(item->page->ptr, idx);
-				break;
-			}
-		}
-		assert(block);
-		if(order == ctl->max_order)
-			free_work_page(item);
-		else
-			block_list_append(block, &(ctl->free_list[order].block));
-
-		item->slack = 0;
-	} else if(item->slack == 0) {
-	} else {
-		assert("no possible branch" == NULL);
-	}
-}
-*/
-
 void put_free_block(struct free_block *block, int order) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *item;
@@ -655,25 +577,6 @@ void put_free_block(struct free_block *block, int order) {
 
 }
 
-/*
-   set_block_unused(item->bitmap, idx);
-   while(order < ctl->max_order) {
-   if(check_buddy_free(item->bitmap, idx, order)) {
-   block_list_remove((struct free_block*)get_block_addr(item->page->ptr, get_buddy_index(idx, order)));
-   idx = get_parent_index(idx, order);
-   order++;
-   }else {
-   block = (struct free_block*)get_block_addr(item->page->ptr, idx);
-   break;
-   }
-   }
-   assert(block);
-   if(order == ctl->max_order)
-   free_work_page(item);
-   else
-   block_list_append(block, &(ctl->free_list[order].block));
-   */
-
 inline int __roundup_pow2(int v) {
 	v--;
 	v |= v >> 1;
@@ -745,8 +648,6 @@ kma_free(void* ptr, kma_size_t size)
 		first_page = NULL;
 	}
 }
-
-
 
 
 #endif // KMA_LZBUD

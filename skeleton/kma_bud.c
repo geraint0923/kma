@@ -59,6 +59,7 @@
 
 /**************Implementation***********************************************/
 
+
 #define likely(x)       __builtin_expect(!!(x), 1)
 #define unlikely(x)     __builtin_expect(!!(x), 0)
 
@@ -248,29 +249,6 @@ void add_page_for_bitmap() {
 	list_append(node, &(ctl->ctl_page_list));
 }
 
-/*
-void add_page_for_idx(int idx) {
-	struct bud_ctl *ctl = get_bud_ctl();
-	int sz = 1 << (idx + SIZE_OFFSET);
-	char *cur, *end;
-	struct free_block *block;
-	kma_page_t *page;
-	struct page_item *item;
-	assert(ctl);
-	page = get_page();
-	cur = (char*)(page->ptr);
-	end = (char*)get_page_end(cur);
-	for(; cur + sz <= end; cur += sz) {
-		block = (struct free_block*)cur;
-		block->next = ctl->free_list[idx].next;
-		ctl->free_list[idx].next = block;
-	}
-	item = get_unused_page_item();
-	assert(item);
-	item->page = page;
-	list_append(item, &(ctl->page_list));
-}
-*/
 
 inline int get_list_index_by_size(int *table, int sz) {
 	/*
@@ -355,12 +333,12 @@ void put_bitmap(unsigned char*);
 static struct page_item *find_page_item_by_addr(void*);
 static void remove_page_map_by_addr(void*);
 
-struct page_item *get_unused_page_item(int need_bitmap) {
+inline struct page_item *get_unused_page_item(int need_bitmap) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *node, *tp;
 	unsigned char *bmp;
 	//assert(ctl);
-	if(ctl->unused_list.prev == &(ctl->unused_list))
+	if(unlikely(ctl->unused_list.prev == &(ctl->unused_list)))
 		add_page_for_page_item();
 	if(need_bitmap) {
 		bmp = get_bitmap();
@@ -400,11 +378,11 @@ void put_unused_page_item(struct page_item *node, int have_bitmap) {
 	}
 }
 
-unsigned char *get_bitmap() {
+inline unsigned char *get_bitmap() {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *node, *tp;
 	//assert(ctl);
-	if(ctl->bitmap_list.prev == &(ctl->bitmap_list))
+	if(unlikely(ctl->bitmap_list.prev == &(ctl->bitmap_list)))
 		add_page_for_bitmap();
 	node = ctl->bitmap_list.next;
 	list_remove(node);
@@ -414,7 +392,7 @@ unsigned char *get_bitmap() {
 	return (unsigned char*)node;
 }
 
-void put_bitmap(unsigned char *bmp) {
+inline void put_bitmap(unsigned char *bmp) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *tp;
 	unsigned char *cur, *end;
@@ -450,7 +428,7 @@ static inline int get_page_map_index(void *ptr) {
 	return (((unsigned long)ptr)>>PAGE_BIT_LEN)&(PAGESIZE/sizeof(struct page_map)-1);
 }
 
-static void insert_page_map(struct page_item *item) {
+inline static void insert_page_map(struct page_item *item) {
 	int idx;
 	struct page_item *cur;
 	struct bud_ctl *ctl = get_bud_ctl();
@@ -459,15 +437,15 @@ static void insert_page_map(struct page_item *item) {
 	//assert(item);
 	idx = get_page_map_index(item->page->ptr);
 	cur = ctl->page_map_list.next;
-	while(cur != &(ctl->page_map_list)) {
+	while(likely(cur != &(ctl->page_map_list))) {
 		map_arr = (struct page_map*)cur->page->ptr;	
-		if(!map_arr[idx].page) {
+		if(likely(!map_arr[idx].page)) {
 			found = 1;
 			break;
 		}
 		cur = cur->next;
 	}
-	if(!found) {
+	if(unlikely(!found)) {
 		cur = get_unused_page_item(0);
 		cur->page = get_page();
 		memset(cur->page->ptr, 0, cur->page->size);
@@ -477,7 +455,7 @@ static void insert_page_map(struct page_item *item) {
 	map_arr[idx].page = item;
 }
 
-static inline struct page_item *find_page_item_by_addr(void *ptr) {
+inline static inline struct page_item *find_page_item_by_addr(void *ptr) {
 	struct page_item *cur;
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_map *map_arr;
@@ -495,7 +473,7 @@ static inline struct page_item *find_page_item_by_addr(void *ptr) {
 	return NULL;
 }
 
-static inline void remove_page_map_by_addr(void *ptr) {
+inline static inline void remove_page_map_by_addr(void *ptr) {
 	struct page_item *cur;
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_map *map_arr;
@@ -513,7 +491,8 @@ static inline void remove_page_map_by_addr(void *ptr) {
 		cur = cur->next;
 	}
 }
-void alloc_work_page() {
+
+inline void alloc_work_page() {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *item;
 	struct free_block *block;
@@ -527,7 +506,7 @@ void alloc_work_page() {
 	list_append(item, &(ctl->work_page_list));
 }
 
-int check_buddy_free(unsigned char *bitmap, int begin_idx, int order) {
+inline int check_buddy_free(unsigned char *bitmap, int begin_idx, int order) {
 	int i, cidx, bidx;
 	unsigned int *arr;
 	i = get_buddy_index(begin_idx, order);
@@ -571,7 +550,7 @@ inline void set_block_unused(unsigned char *bitmap, int begin_idx) {
 	clear_bit(bitmap, begin_idx);
 }
 
-void free_work_page(struct page_item *item) {
+inline void free_work_page(struct page_item *item) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *cur;
 	struct page_map *map_arr;
@@ -592,7 +571,7 @@ void free_work_page(struct page_item *item) {
 	put_unused_page_item(item, 1);
 }
 
-struct free_block *get_free_block(int order, int sz) {
+inline struct free_block *get_free_block(int order, int sz) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	int i, end_order = order;
 	struct free_block *block = NULL, *buddy_block;
@@ -627,7 +606,7 @@ struct free_block *get_free_block(int order, int sz) {
 	return block;
 }
 
-void put_free_block(struct free_block *block, int order, int sz) {
+inline void put_free_block(struct free_block *block, int order, int sz) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *item;
 	int idx;
@@ -637,7 +616,6 @@ void put_free_block(struct free_block *block, int order, int sz) {
 		put_unused_page_item((struct page_item*)block, 0);
 		return;
 	}
-
 
 	item = find_page_item_by_addr((void*)block);
 	idx = get_block_index((void*)block);
@@ -670,7 +648,6 @@ inline int __roundup_pow2(int v) {
 	return v;
 }
 
-
 void*
 kma_malloc(kma_size_t size)
 {
@@ -702,6 +679,7 @@ kma_free(void* ptr, kma_size_t size)
 				__roundup_pow2(size)), size);
 	ctl->total_free++;
 
+	// return all the pages if all the requests are done
 	if(unlikely(ctl->total_alloc == ctl->total_free)) {
 		cur = ctl->work_page_list.next;
 		while(cur != &(ctl->work_page_list)) {

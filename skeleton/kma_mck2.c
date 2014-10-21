@@ -62,6 +62,11 @@
 
 #define SIZE_NUM	(20)
 #define SIZE_OFFSET	(4)
+#define MAX_SIZE	PAGESIZE
+#define PAGE_INDEX_MASK	(~(PAGESIZE-1))
+#define PAGE_BIT_LEN	((PAGESIZE==8192)?(13):((PAGESIZE==4096)?12:11))
+
+
 
 inline int roundup_pow2(int v) {
 	v--;
@@ -94,10 +99,13 @@ int get_set_bit_num(unsigned int i)
 
 
 static kma_page_t *first_page = NULL;
-
+struct page_map {
+	struct page_item *page;
+};
 
 struct page_item {
 	kma_page_t *page;
+	int order;
 	struct page_item *prev;
 	struct page_item *next;
 };
@@ -116,6 +124,7 @@ struct mck2_ctl {
 	struct block_list free_list[SIZE_NUM];
 	struct page_item unused_list;
 	struct page_item page_list;
+	struct page_item page_map_list;
 };
 
 inline struct mck2_ctl *get_mck2_ctl() {
@@ -149,7 +158,57 @@ void list_remove(struct page_item *item) {
 	item->next->prev = item->prev;
 }
 
+static inline int get_page_map_index(void *ptr) {
+	return (((unsigned long)ptr)>>PAGE_BIT_LEN)&(PAGESIZE/sizeof(struct page_map)-1);
+}
+
 extern struct page_item *get_unused_page_item();
+
+static void insert_page_map(struct page_item *item) {
+	int idx;
+	struct page_item *cur;
+	struct mck2_ctl *ctl = get_mck2_ctl();
+	struct page_map *map_arr;
+	int found = 0;
+	assert(item);
+	idx = get_page_map_index(item->page->ptr);
+	cur = ctl->page_map_list.next;
+	while(cur != &(ctl->page_map_list)) {
+		map_arr = (struct page_map*)cur->page->ptr;	
+		if(!map_arr[idx].page) {
+			found = 1;
+			break;
+		}
+		cur = cur->next;
+	}
+	if(!found) {
+		cur = get_unused_page_item(0);
+		cur->page = get_page();
+		memset(cur->page->ptr, 0, cur->page->size);
+		list_append(cur, &(ctl->page_map_list));
+	}
+	map_arr = (struct page_map*)cur->page->ptr;
+	map_arr[idx].page = item;
+}
+
+static struct page_item *find_page_item_by_addr(void *ptr) {
+	struct page_item *cur;
+	struct mck2_ctl *ctl = get_mck2_ctl();
+	struct page_map *map_arr;
+	int idx;
+	assert(ptr);
+	cur = ctl->page_map_list.next;
+	idx = get_page_map_index(ptr);
+	ptr = get_page_start(ptr);
+	while(cur != &(ctl->page_map_list)) {
+		map_arr = (struct page_map*)cur->page->ptr;
+		if(map_arr[idx].page && map_arr[idx].page->page->ptr == ptr)
+			return map_arr[idx].page;
+		cur = cur->next;
+	}
+	ptr = get_page_start(ptr);
+	return NULL;
+}
 
 void add_page_for_page_item() {
 	struct mck2_ctl *ctl = get_mck2_ctl();
@@ -187,6 +246,8 @@ void add_page_for_idx(int idx) {
 	assert(item);
 	item->page = page;
 	list_append(item, &(ctl->page_list));
+	item->order = idx;
+	insert_page_map(item);
 }
 
 void init_first_page() {
@@ -201,6 +262,7 @@ void init_first_page() {
 
 	ctl->unused_list.prev = ctl->unused_list.next = &(ctl->unused_list);
 	ctl->page_list.prev = ctl->page_list.next = &(ctl->page_list);
+	ctl->page_map_list.prev = ctl->page_map_list.next = &(ctl->page_map_list);
 	cur = (struct page_item*)((char*)ctl + sizeof(struct mck2_ctl));
 	end = (struct page_item*)get_page_end((void*)cur);
 	for(; cur + 1 < end; cur++) {
@@ -275,7 +337,7 @@ void
 kma_free(void* ptr, kma_size_t size)
 {
 	struct mck2_ctl *ctl = get_mck2_ctl();
-	struct page_item *cur;
+	struct page_item *cur, *node;
 	struct free_block *block;
 	struct block_list *list;
 	int count = 0;
@@ -283,8 +345,10 @@ kma_free(void* ptr, kma_size_t size)
 	assert(ctl);
 
 	block = (struct free_block*)ptr;
-	
-	list = &(ctl->free_list[get_list_index_by_size(roundup_pow2(size))]);
+
+	node = find_page_item_by_addr(ptr);
+	//list = &(ctl->free_list[get_list_index_by_size(roundup_pow2(size))]);	
+	list = &(ctl->free_list[node->order]);
 
 	block->next = list->next;
 	list->next = block;
@@ -294,6 +358,12 @@ kma_free(void* ptr, kma_size_t size)
 	if(ctl->total_alloc == ctl->total_free) {
 		cur = ctl->page_list.next;
 		while(cur != &(ctl->page_list)) {
+			assert(cur->page->ptr);
+			page_array[count++] = cur->page;
+			cur = cur->next;
+		}
+		cur = ctl->page_map_list.next;
+		while(cur != &(ctl->page_map_list)) {
 			assert(cur->page->ptr);
 			page_array[count++] = cur->page;
 			cur = cur->next;

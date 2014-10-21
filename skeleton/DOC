@@ -26,12 +26,18 @@ until it finds a fit block for the request. And when a block is required to be f
 the free list until it finds a place matching its address.
 
 It will dynamically get some pages for more list items which will be added to the free list when being
-free. In my implementation, it doesn't return pages to the page-level allocator until the final free
-operation is finished.
+free. In my implementation, it will onlu return pages to the page-level allocator when the last request
+has been processed.
+
+I don't use the free block itself as a list item. I allocate some pages for these list items instead.
+After a block of memory is freed, I append a list item which contains the start address and the size to
+the free list, and coalesce the adjacent free blocks if possible.
 
 iv. Explanation
 Malloc and free could be very quick when the free list is still small, but it will slow down as the size
-of free list grows. 
+of free list grows. And when the list items are run out, it will allocate another page to append all the
+list item in this page to the unused item list from which it can distribute the list items when needed.
+So the worst latency could be very large.
 
 
 (2) Buddy System
@@ -47,8 +53,25 @@ KMA_MALLOC		36			3885793		133
 KMA_FREE		43			991815		112
 
 iii. Design
+In my implementation of Buddy system, I use 32 bytes as the smallest memory block size. And I do a lot 
+of bit manipulation in this allocator, such as set_block_used, set_block_unused, and check_buddy_free.
+To accelerate the process of finding corresponding page, I use a page map which could get the information
+of the specified page by just looking up in a table. I also allocate some pages for the list items which 
+will be used to manage the page information. And I associate the bitmaps and pages dynamically, because some
+page doesn't need bitmap at all, for example the pages used to store control information, and this makes 
+the allocator more efficient.
+
+Because of the existence of the request of size less than 32 bytes, I must deal with this small request, I
+choose to return the unused list item which can store the information of page for the request asking for
+less than 16 bytes. And this optimization makes the allocator have less fragments, which means that it could
+be more efficient again.
 
 iv. Explanation
+As we can see from the statistics, Buddy system has much lower latency than Resource Map, while lower
+utilizaton ratio than Resource Map because of the round up operation in Buddy system.
+
+Since I allocate separated pages for list items, and initializing them in one time, the worst latency of 
+kma_malloc is also very high. But this kind of allocation is really rare, so the average latency is much better.
 
 Extra Points:
 
@@ -93,8 +116,8 @@ Average Effiency = 57.20%
 
 ii. Latency(nanosecond)
 				Best		Worst		Average
-KMA_MALLOC		25			3986018		101
-KMA_FREE		23			1055896		52
+KMA_MALLOC		25			3986018		108
+KMA_FREE		32			1055896		92
 
 iii. Design
 

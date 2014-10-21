@@ -1,10 +1,9 @@
-
 To compare different algorithms easier, I define that
 Efficiency = Total Used Memory Size / Total Request Memory Size
 and I use the result of testsuite/5.trace for comparision.
 
-To measure preciser latencies, I used a high-resolution timer in Linux,
-which is called clock_gettime() in the code.
+To measure preciser latencies, I used a high-resolution(nanosecond) timer in Linux, which is called 
+clock_gettime() in the code.
 
 
 Basic Points:
@@ -21,6 +20,20 @@ ii. Latency(nanosecond)
 KMA_MALLOC		28			3914349		4359
 KMA_FREE		30			1056799		4549
 
+iii. Design
+In my resource map implementation, I choose First-Fit as my policy, it will traverse the free list
+until it finds a fit block for the request. And when a block is required to be free, it will traverse
+the free list until it finds a place matching its address.
+
+It will dynamically get some pages for more list items which will be added to the free list when being
+free. In my implementation, it doesn't return pages to the page-level allocator until the final free
+operation is finished.
+
+iv. Explanation
+Malloc and free could be very quick when the free list is still small, but it will slow down as the size
+of free list grows. 
+
+
 (2) Buddy System
 
 i. Efficiency
@@ -33,6 +46,9 @@ ii. Latency(nanosecond)
 KMA_MALLOC		36			3885793		133
 KMA_FREE		43			991815		112
 
+iii. Design
+
+iv. Explanation
 
 Extra Points:
 
@@ -48,6 +64,9 @@ ii. Latency(nanosecond)
 KMA_MALLOC		43			3837888		142
 KMA_FREE		37			1116976		111
 
+iii. Design
+
+iv. Explanation
 
 (2) Power-of two Free List
 
@@ -61,6 +80,9 @@ ii. Latency(nanosecond)
 KMA_MALLOC		34			3795693		184
 KMA_FREE		24			1084155		47
 
+iii. Design
+
+iv. Explanation
 
 (3) McKusick-Karels
 
@@ -74,4 +96,6 @@ ii. Latency(nanosecond)
 KMA_MALLOC		25			3986018		101
 KMA_FREE		23			1055896		52
 
+iii. Design
 
+iv. Explanation

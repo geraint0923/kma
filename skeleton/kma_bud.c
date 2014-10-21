@@ -59,6 +59,9 @@
 
 /**************Implementation***********************************************/
 
+#define likely(x)       __builtin_expect(!!(x), 1)
+#define unlikely(x)     __builtin_expect(!!(x), 0)
+
 #define SIZE_OFFSET	(5)
 #define MAX_SIZE	PAGESIZE
 #define BITMAP_LEN	(PAGESIZE/(8*(1<<SIZE_OFFSET)))
@@ -143,7 +146,7 @@ inline int get_bit(unsigned char *bitmap, int idx) {
 }
 
 inline struct bud_ctl *get_bud_ctl() {
-	assert(first_page);
+	//assert(first_page);
 	return (struct bud_ctl*)(first_page->ptr);
 }
 
@@ -208,7 +211,7 @@ void add_page_for_page_item() {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *cur, *end;
 	kma_page_t *page;
-	assert(ctl);
+	//assert(ctl);
 	page = get_page();
 	cur = (struct page_item*)(page->ptr);
 	end = (struct page_item*)get_page_end(cur);
@@ -230,7 +233,7 @@ void add_page_for_bitmap() {
 	struct page_item *node;
 	unsigned char *cur, *end;
 	kma_page_t *page;
-	assert(ctl);
+	//assert(ctl);
 	page = get_page();
 	cur = (unsigned char*)(page->ptr);
 	end = (unsigned char*)get_page_end(cur);
@@ -356,7 +359,7 @@ struct page_item *get_unused_page_item(int need_bitmap) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *node, *tp;
 	unsigned char *bmp;
-	assert(ctl);
+	//assert(ctl);
 	if(ctl->unused_list.prev == &(ctl->unused_list))
 		add_page_for_page_item();
 	if(need_bitmap) {
@@ -374,7 +377,7 @@ struct page_item *get_unused_page_item(int need_bitmap) {
 void put_unused_page_item(struct page_item *node, int have_bitmap) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *tp, *cur, *end;
-	assert(node);
+	//assert(node);
 	if(have_bitmap) {
 		put_bitmap((unsigned char*)node->bitmap);
 	}
@@ -384,7 +387,7 @@ void put_unused_page_item(struct page_item *node, int have_bitmap) {
 		list_append(node, &(ctl->unused_list));
 	tp = find_page_item_by_addr((void*)node);
 	tp->bitmap--;
-	if(tp->bitmap == (unsigned char*)0x1) {
+	if(unlikely(tp->bitmap == (unsigned char*)0x1)) {
 		cur = (struct page_item*)tp->page->ptr;
 		end = (struct page_item*)((char*)cur + PAGESIZE);
 		for(; cur + 1 <= end; cur++){
@@ -400,7 +403,7 @@ void put_unused_page_item(struct page_item *node, int have_bitmap) {
 unsigned char *get_bitmap() {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *node, *tp;
-	assert(ctl);
+	//assert(ctl);
 	if(ctl->bitmap_list.prev == &(ctl->bitmap_list))
 		add_page_for_bitmap();
 	node = ctl->bitmap_list.next;
@@ -415,14 +418,14 @@ void put_bitmap(unsigned char *bmp) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *tp;
 	unsigned char *cur, *end;
-	assert(ctl);
+	//assert(ctl);
 	if(first_page->ptr == get_page_start((void*)bmp))
 		list_insert_head((struct page_item*)bmp, &(ctl->bitmap_list));
 	else
 		list_append((struct page_item*)bmp, &(ctl->bitmap_list));
 	tp = find_page_item_by_addr((void*)bmp);
 	tp->bitmap--;
-	if(!(tp->bitmap)) {
+	if(unlikely(!(tp->bitmap))) {
 		cur = tp->page->ptr;
 		end = cur + PAGESIZE;
 		for(; cur + BITMAP_LEN <= end; cur += BITMAP_LEN) {
@@ -453,7 +456,7 @@ static void insert_page_map(struct page_item *item) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_map *map_arr;
 	int found = 0;
-	assert(item);
+	//assert(item);
 	idx = get_page_map_index(item->page->ptr);
 	cur = ctl->page_map_list.next;
 	while(cur != &(ctl->page_map_list)) {
@@ -474,36 +477,36 @@ static void insert_page_map(struct page_item *item) {
 	map_arr[idx].page = item;
 }
 
-static struct page_item *find_page_item_by_addr(void *ptr) {
+static inline struct page_item *find_page_item_by_addr(void *ptr) {
 	struct page_item *cur;
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_map *map_arr;
 	int idx;
-	assert(ptr);
+	//assert(ptr);
 	cur = ctl->page_map_list.next;
 	idx = get_page_map_index(ptr);
 	ptr = get_page_start(ptr);
-	while(cur != &(ctl->page_map_list)) {
+	while(likely(cur != &(ctl->page_map_list))) {
 		map_arr = (struct page_map*)cur->page->ptr;
-		if(map_arr[idx].page && map_arr[idx].page->page->ptr == ptr)
+		if(likely(map_arr[idx].page && map_arr[idx].page->page->ptr == ptr))
 			return map_arr[idx].page;
 		cur = cur->next;
 	}
 	return NULL;
 }
 
-static void remove_page_map_by_addr(void *ptr) {
+static inline void remove_page_map_by_addr(void *ptr) {
 	struct page_item *cur;
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_map *map_arr;
 	int idx;
-	assert(ptr);
+	//assert(ptr);
 	cur = ctl->page_map_list.next;
 	idx = get_page_map_index(ptr);
 	ptr = get_page_start(ptr);
-	while(cur != &(ctl->page_map_list)) {
+	while(likely(cur != &(ctl->page_map_list))) {
 		map_arr = (struct page_map*)cur->page->ptr;
-		if(map_arr[idx].page && map_arr[idx].page->page->ptr == ptr) {
+		if(likely(map_arr[idx].page && map_arr[idx].page->page->ptr == ptr)) {
 			map_arr[idx].page = NULL;
 			return;
 		}
@@ -514,7 +517,7 @@ void alloc_work_page() {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *item;
 	struct free_block *block;
-	assert(ctl);	
+	//assert(ctl);	
 	item = get_unused_page_item(1);
 	item->page = get_page();
 	//init_bitmap(item);
@@ -573,12 +576,12 @@ void free_work_page(struct page_item *item) {
 	struct page_item *cur;
 	struct page_map *map_arr;
 	int idx;
-	assert(ctl);
+	//assert(ctl);
 	idx = get_page_map_index(item->page->ptr);
 	cur = ctl->page_map_list.next;
-	while(cur != &(ctl->page_map_list)) {
+	while(likely(cur != &(ctl->page_map_list))) {
 		map_arr = (struct page_map*)cur->page->ptr;
-		if(map_arr[idx].page && map_arr[idx].page == item) {
+		if(likely(map_arr[idx].page && map_arr[idx].page == item)) {
 			map_arr[idx].page = NULL;
 			break;
 		}
@@ -594,7 +597,7 @@ struct free_block *get_free_block(int order, int sz) {
 	int i, end_order = order;
 	struct free_block *block = NULL, *buddy_block;
 	struct page_item *item;
-	assert(ctl);
+	//assert(ctl);
 
 	if(sz <= sizeof(struct page_item))
 		return (struct free_block*)get_unused_page_item(0);
@@ -613,13 +616,13 @@ struct free_block *get_free_block(int order, int sz) {
 			end_order = i;
 		}
 	}
-	assert(block);
+	//assert(block);
 	for(i = end_order - 1; i >= order; i--) {
 		buddy_block = (struct free_block*)((char*)block + (1<<(i+SIZE_OFFSET)));
 		block_list_append(buddy_block, &(ctl->free_list[i].block));
 	}
 	item = find_page_item_by_addr((void*)block);
-	assert(item);
+	//assert(item);
 	set_block_used(item->bitmap, get_block_index(block));
 	return block;
 }
@@ -628,7 +631,7 @@ void put_free_block(struct free_block *block, int order, int sz) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *item;
 	int idx;
-	assert(ctl);
+	//assert(ctl);
 
 	if(sz <= sizeof(struct page_item)) {
 		put_unused_page_item((struct page_item*)block, 0);
@@ -649,7 +652,7 @@ void put_free_block(struct free_block *block, int order, int sz) {
 			break;
 		}
 	}
-	assert(block);
+	//assert(block);
 	if(order == ctl->max_order)
 		free_work_page(item);
 	else
@@ -673,9 +676,9 @@ kma_malloc(kma_size_t size)
 {
 	struct bud_ctl *ctl;
 	int idx;
-	if(size + sizeof(void*) > PAGESIZE)
+	if(unlikely(size + sizeof(void*) > PAGESIZE))
 		return NULL;
-	if(!first_page) {
+	if(unlikely(!first_page)) {
 		init_first_page();
 	}
 	ctl = get_bud_ctl();
@@ -693,28 +696,28 @@ kma_free(void* ptr, kma_size_t size)
 	struct page_item *cur;
 	int count = 0;
 	kma_page_t *page_array[MAXPAGES];
-	assert(ctl);
+	//assert(ctl);
 
 	put_free_block((struct free_block*)ptr, get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition,
 				__roundup_pow2(size)), size);
 	ctl->total_free++;
 
-	if(ctl->total_alloc == ctl->total_free) {
+	if(unlikely(ctl->total_alloc == ctl->total_free)) {
 		cur = ctl->work_page_list.next;
 		while(cur != &(ctl->work_page_list)) {
-			assert(cur->page->ptr);
+			//assert(cur->page->ptr);
 			page_array[count++] = cur->page;
 			cur = cur->next;
 		}
 		cur = ctl->ctl_page_list.next;
 		while(cur != &(ctl->ctl_page_list)) {
-			assert(cur->page->ptr);
+			//assert(cur->page->ptr);
 			page_array[count++] = cur->page;
 			cur = cur->next;
 		}
 		cur = ctl->page_map_list.next;
 		while(cur != &(ctl->page_map_list)) {
-			assert(cur->page->ptr);
+			//assert(cur->page->ptr);
 			page_array[count++] = cur->page;
 			cur = cur->next;
 		}

@@ -58,16 +58,7 @@
 /************External Declaration*****************************************/
 
 /**************Implementation***********************************************/
-inline int roundup_pow2(int v) {
-	v--;
-	v |= v >> 1;
-	v |= v >> 2;
-	v |= v >> 4;
-	v |= v >> 8;
-	v |= v >> 16;
-	v++;
-	return v;
-}
+
 
 
 inline void *get_page_start(void *addr) {
@@ -79,22 +70,17 @@ inline void *get_page_end(void *addr) {
 }
 
 
-int get_set_bit_num(unsigned int i)
-{
-	i = i - ((i >> 1) & 0x55555555);
-	i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
-	return (((i + (i >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
-}
-
-
 
 kma_page_t *first_page = NULL;
 
+// wrap the page information structure
 struct page_info {
 	kma_page_t *page;
 //	int ref_count;
 };
 
+// list item in resource map's free list
+// will be order by address
 struct free_node {
 	void *addr;
 	int size;
@@ -102,6 +88,7 @@ struct free_node {
 	struct free_node *next;
 };
 
+// control meta data for resource map allocator
 struct rm_ctl {
 	int total_alloc;
 	int total_free;
@@ -110,11 +97,15 @@ struct rm_ctl {
 	struct free_node page_list;
 };
 
+// a helper to get resource map's control unit
 struct rm_ctl *get_rm_ctl() {
 	assert(first_page);
 	return (struct rm_ctl*)((char*)first_page->ptr + sizeof(struct page_info));
 }
 
+/*
+ * a lot of list operation functions
+ */
 void list_append(struct free_node *item, struct free_node *header) {
 	item->prev = header->prev;
 	item->next = header;
@@ -143,6 +134,7 @@ void list_remove(struct free_node *item) {
 
 extern struct free_node *get_unused_free_node();
 
+// allocate more pages for list item
 void add_page_for_free_node() {
 	struct rm_ctl *ctl = get_rm_ctl();
 	struct free_node *cur, *end;
@@ -162,6 +154,7 @@ void add_page_for_free_node() {
 	list_append(cur, &(ctl->page_list));
 }
 
+// to initialize the first page on which the control meta data will be
 void init_first_page() {
 	struct page_info *info;
 	struct rm_ctl *ctl;
@@ -178,11 +171,13 @@ void init_first_page() {
 	ctl->page_list.prev = ctl->page_list.next = &(ctl->page_list);
 	cur = (struct free_node*)((char*)ctl + sizeof(struct rm_ctl));
 	end = (struct free_node*)get_page_end((void*)cur);
+	// use the rest of memory as list item
 	for(; cur + 1 < end; cur++) {
 		list_append(cur, &(ctl->unused_list));
 	}
 }
 
+// get a list item which could be append to the free list when memory is freed
 struct free_node *get_unused_free_node() {
 	struct rm_ctl *ctl = get_rm_ctl();
 	struct free_node *node;
@@ -194,12 +189,14 @@ struct free_node *get_unused_free_node() {
 	return node;
 };
 
+// return a list item if the corresponding memory is allocated
 void put_unused_free_node(struct free_node *node) {
 	struct rm_ctl *ctl = get_rm_ctl();
 	assert(node);
 	list_insert_head(node, &(ctl->unused_list));
 }
 
+// this is my resource map's strategy--- First Fit
 void *first_fit(kma_size_t size) {
 	struct free_node *cur, *node;
 	kma_page_t *page;
@@ -209,6 +206,7 @@ void *first_fit(kma_size_t size) {
 	struct rm_ctl *ctl = get_rm_ctl();
 	assert(ctl);
 	cur = ctl->free_list.next;
+	// to find a block fitting the size first
 	while(cur != &(ctl->free_list)) {
 		if(cur->size >= size) {
 			found = 1;
@@ -216,6 +214,7 @@ void *first_fit(kma_size_t size) {
 		}
 		cur = cur->next;
 	}
+	// if couldn't find a fit free block, then allocate a new page
 	if(!found) {
 		page = get_page();
 		info = (struct page_info*)page->ptr;
@@ -256,6 +255,7 @@ kma_malloc(kma_size_t size)
 	if(!first_page) {
 		init_first_page();
 	}
+	// use first fit strategy
 	return first_fit(size);
 }
 
@@ -274,11 +274,13 @@ kma_free(void* ptr, kma_size_t size)
 	base_addr = get_page_start(ptr);
 	cur = ctl->free_list.next;
 	while(cur != &(ctl->free_list)) {
+		// try to coalesc the adjacent fragment if possible
 		if(base_addr == get_page_start(cur->addr) &&
 				(ptr == (void*)((char*)cur->addr + cur->size))) {
 			done = 1;
 			node = cur->next;
 			cur->size += size;
+			// merge the next free block
 			if(node != &(ctl->free_list) &&
 					base_addr == get_page_start(node->addr) &&
 					((void*)((char*)cur->addr + (long)cur->size) == node->addr)) {
@@ -298,6 +300,7 @@ kma_free(void* ptr, kma_size_t size)
 		}
 		cur = cur->next;
 	}
+	// if we couldn't coalesc the fragment, then insert the block at the right place
 	if(!done) {
 		node = get_unused_free_node();
 		node->addr = ptr;
@@ -306,7 +309,7 @@ kma_free(void* ptr, kma_size_t size)
 	}
 	ctl->total_free++;
 
-
+	// clean up all the allocated resource after all the things are done
 	if(ctl->total_alloc == ctl->total_free) {
 		cur = ctl->free_list.next;
 		while(cur != &(ctl->free_list)) {

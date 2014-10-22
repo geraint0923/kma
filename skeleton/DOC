@@ -52,8 +52,8 @@ Average  = 64.69%
 
 ii. Latency(nanosecond)
 				Best		Worst		Average
-KMA_MALLOC		36			3885793		133
-KMA_FREE		43			991815		112
+KMA_MALLOC		26			3885793		107
+KMA_FREE		26			991815		87
 
 iii. Design
 In my implementation of Buddy system, I use 32 bytes as the smallest memory block size. And I do a lot 

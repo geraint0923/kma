@@ -39,6 +39,9 @@ of free list grows. And when the list items are run out, it will allocate anothe
 list item in this page to the unused item list from which it can distribute the list items when needed.
 So the worst latency could be very large.
 
+And because Resource Map never return the pages to the page-level allocator before the test is finished, so
+the average efficiency is much lower than the best ratio.
+
 
 (2) Buddy System
 
@@ -88,10 +91,18 @@ KMA_MALLOC		43			3837888		142
 KMA_FREE		37			1116976		111
 
 iii. Design
+For the lazy buddy, I implemented it by reusing the source code of Buddy system I have implemented. So in 
+this implementation, I only need to change the code in get_free_block and put_free_block, to follow the lazy 
+policy asked by SVR4 Lazy Buddy algorithm. Another modification is to add a new field to each free list to
+record the respective SLACK value which will be used in put_free_block to determine if the further coalescing
+is needed.
 
 iv. Explanation
+Because of the almost same source code architecture with Buddy system, the latencies are almost the same. And
+it also has the same reason(separated pages for list items and initialization is done in one time) for why 
+the worst latency is so high.
 
-(2) Power-of two Free List
+(2) Power-of-two Free List
 
 i. Efficiency
 Best  = 70.53%
@@ -104,8 +115,19 @@ KMA_MALLOC		34			3795693		184
 KMA_FREE		24			1084155		47
 
 iii. Design
+I implemented two versions of this allocator, one uses 'size' passed into the kma_free function, and the
+other ignore the 'size' argument. By default, it will be compiled without using 'size'. I used separated 
+pages for list items which will be used to manage the page information.
 
 iv. Explanation
+The worst latency is high because I initialize all the list items in each page in one time. The average
+latency of kma_free is much lower than Buddy and Lazy Buddy because this allocator only append the free 
+block to the corresponding free list instead of trying to coalesce the free blocks.
+
+The best utilization ratio is almost the same as Buddy system and Lazy Buddy because they all use roud
+up to get block size. Power-of-two Free List will never return pages to the page-level allocator until 
+all the requests have been issued. And this makes this allocator's average utilization ratio is much 
+lower than Buddy and Lazy Buddy.
 
 (3) McKusick-Karels
 
@@ -120,5 +142,19 @@ KMA_MALLOC		25			3986018		108
 KMA_FREE		32			1055896		92
 
 iii. Design
+I reuse the source code framework of Power-of-two Free List allocator. The modification is that one page
+could only have the blocks with the same size. which reduces the fragments. And I also use the page map
+to accelerate the process of finding corresponding page.
 
 iv. Explanation
+As mentioned above, the worst latency is caused by doing all the initialization work in one time. This
+allocator's average kma_free latency is about twice of Power-of-two Free List because this allocator need 
+to figure out which page the return pointer is located on, so that it could append the freed block to the 
+correct free list.
+
+
+
+
+
+
+Author: Yang Yang (yangyang2016@u.northwestern.edu)

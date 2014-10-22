@@ -242,6 +242,10 @@ void add_page_for_bitmap() {
 	//assert(ctl);
 	page = get_page();
 	node = (struct page_item*)(page->ptr);
+	node->page = page;
+	node->bitmap = NULL;
+	list_append(node, &(ctl->ctl_page_list));
+
 	cur = (unsigned char*)(node + 1);
 	end = (unsigned char*)get_page_end(cur);
 	for(; cur + BITMAP_LEN <= end; cur += BITMAP_LEN) {
@@ -249,10 +253,7 @@ void add_page_for_bitmap() {
 		list_insert_head(node, &(ctl->bitmap_list));
 	}
 //	node = get_unused_page_item(0);
-	node->page = page;
-	node->bitmap = NULL;
 //	insert_page_map(node);
-	list_append(node, &(ctl->ctl_page_list));
 }
 
 
@@ -274,7 +275,7 @@ inline int get_list_index_by_size(int *table, int sz) {
 
 void init_first_page() {
 	struct bud_ctl *ctl;
-	struct page_item *fp, *rsv, *cur, *end;
+	struct page_item *cur, *end;
 //	char *st, *ed;
 	int i, count;
 	int _MultiplyDeBruijnBitPosition[32] = {
@@ -302,10 +303,10 @@ void init_first_page() {
 	cur->bitmap += 999999;
 	//list_append(cur, &(ctl->ctl_page_list));
 	cur->page = first_page;
-	fp = cur;
-	cur++;
-	rsv = cur;
-	cur++;
+//	fp = cur;
+//	cur++;
+//	rsv = cur;
+//	cur++;
 	end = (struct page_item*)get_page_end((void*)cur);
 	count = ((unsigned long)((char*)end-(char*)cur)) / (1 * sizeof(struct page_item));
 	/*
@@ -402,9 +403,10 @@ inline unsigned char *get_bitmap() {
 		add_page_for_bitmap();
 	node = ctl->bitmap_list.next;
 	list_remove(node);
-	tp = find_page_item_by_addr((void*)node);
+//	tp = find_page_item_by_addr((void*)node);
+	tp = (struct page_item*)get_page_start(node);
 	tp->bitmap++;
-	memset((unsigned char*)node, 0, BITMAP_LEN);
+//	memset((unsigned char*)node, 0, BITMAP_LEN);
 	return (unsigned char*)node;
 }
 
@@ -640,6 +642,7 @@ inline void put_free_block(void *__block, int order, int sz) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *item;
 	struct free_block *block, *buddy_block;
+	void *pg_start;
 	int idx;
 	//assert(ctl);
 
@@ -653,27 +656,27 @@ inline void put_free_block(void *__block, int order, int sz) {
 		return;
 	}
 	block = (struct free_block*)(__block - 1);
-
-	item = find_page_item_by_addr((void*)block);
+	pg_start = get_page_start(block);
 	idx = get_block_index((void*)block);
 //	set_block_unused(item->bitmap, idx);
 //	block->order = order
 	while(order < ctl->max_order) {
-		buddy_block = (struct free_block*)get_block_addr(item->page->ptr, get_buddy_index(idx, order));
+		buddy_block = (struct free_block*)get_block_addr(pg_start, get_buddy_index(idx, order));
 		//if(check_buddy_free(item->bitmap, idx, order)) {
 		if(__check_buddy_free(buddy_block, order)) {
 			block_list_remove(buddy_block);
 			idx = get_parent_index(idx, order);
 			order++;
 		}else {
-			block = (struct free_block*)get_block_addr(item->page->ptr, idx);
+			block = (struct free_block*)get_block_addr(pg_start, idx);
 			break;
 		}
 	}
 	//assert(block);
-	if(order == ctl->max_order)
+	if(order == ctl->max_order) {
+		item = find_page_item_by_addr((void*)block);
 		free_work_page(item);
-	else {
+	} else {
 		block->order = order;
 		block_list_append(block, &(ctl->free_list[order].block));
 	}

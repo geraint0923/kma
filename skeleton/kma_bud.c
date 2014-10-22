@@ -588,9 +588,9 @@ inline void *get_free_block(int order, int sz) {
 
 	if(sz <= sizeof(struct page_item))
 		return (void*)get_unused_page_item(0);
-if(sz <= BITMAP_LEN) {
-	return (void*)get_bitmap();
-}
+	if(sz <= BITMAP_LEN) {
+		return (void*)get_bitmap();
+	}
 
 	for(i = order; i <= ctl->max_order; i++) {
 		block = ctl->free_list[i].block.next;
@@ -638,10 +638,10 @@ inline void put_free_block(void *__block, int order, int sz) {
 		return;
 	}
 
-if(sz <= BITMAP_LEN) {
-	put_bitmap((unsigned char*)__block);
-return;
-}
+	if(sz <= BITMAP_LEN) {
+		put_bitmap((unsigned char*)__block);
+		return;
+	}
 	block = (struct free_block*)(__block - 1);
 
 	item = find_page_item_by_addr((void*)block);

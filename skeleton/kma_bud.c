@@ -241,16 +241,17 @@ void add_page_for_bitmap() {
 	kma_page_t *page;
 	//assert(ctl);
 	page = get_page();
-	cur = (unsigned char*)(page->ptr);
+	node = (struct page_item*)(page->ptr);
+	cur = (unsigned char*)(node + 1);
 	end = (unsigned char*)get_page_end(cur);
 	for(; cur + BITMAP_LEN <= end; cur += BITMAP_LEN) {
 		node = (struct page_item*)cur;
 		list_insert_head(node, &(ctl->bitmap_list));
 	}
-	node = get_unused_page_item(0);
+//	node = get_unused_page_item(0);
 	node->page = page;
 	node->bitmap = NULL;
-	insert_page_map(node);
+//	insert_page_map(node);
 	list_append(node, &(ctl->ctl_page_list));
 }
 
@@ -329,10 +330,12 @@ void init_first_page() {
 	for(i = 0; i < SIZE_NUM; i++) {
 		ctl->free_list[i].block.next = ctl->free_list[i].block.prev = &(ctl->free_list[i].block);
 	}
+	/*
 	rsv->page = get_page();
 	memset(rsv->page->ptr, 0, PAGESIZE);
 	list_append(rsv, &(ctl->page_map_list));
 	insert_page_map(fp);
+	*/
 }
 
 unsigned char *get_bitmap();
@@ -382,7 +385,7 @@ void put_unused_page_item(struct page_item *node, int have_bitmap) {
 			for(; cur + 1 <= end; cur++){
 				list_remove(cur);
 			}
-			remove_page_map_by_addr(tp->page->ptr);
+//			remove_page_map_by_addr(tp->page->ptr);
 	//		list_remove(tp);
 			free_page(tp->page);
 			//put_unused_page_item(tp, 0);
@@ -414,18 +417,19 @@ inline void put_bitmap(unsigned char *bmp) {
 		list_insert_head((struct page_item*)bmp, &(ctl->bitmap_list));
 	else
 		list_append((struct page_item*)bmp, &(ctl->bitmap_list));
-	tp = find_page_item_by_addr((void*)bmp);
+//	tp = find_page_item_by_addr((void*)bmp);
+	tp = (struct page_item*)get_page_start(bmp);
 	tp->bitmap--;
 	if(unlikely(!(tp->bitmap))) {
-		cur = tp->page->ptr;
-		end = cur + PAGESIZE;
+		cur = (unsigned char *)(tp + 1);
+		end = (unsigned char*)get_page_end(cur);
 		for(; cur + BITMAP_LEN <= end; cur += BITMAP_LEN) {
 			list_remove((struct page_item*)cur);
 		}
-		remove_page_map_by_addr(tp->page->ptr);
+//		remove_page_map_by_addr(tp->page->ptr);
 		list_remove(tp);
 		free_page(tp->page);
-		put_unused_page_item(tp, 0);
+//		put_unused_page_item(tp, 0);
 	}
 }
 

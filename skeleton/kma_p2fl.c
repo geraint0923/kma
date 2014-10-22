@@ -63,7 +63,6 @@
 #define SIZE_NUM	(20)
 #define SIZE_OFFSET	(4)
 
-#define HAVE_HEADER
 
 
 inline int roundup_pow2(int v) {
@@ -243,12 +242,9 @@ kma_malloc(kma_size_t size)
 	}
 	ctl = get_p2fl_ctl();
 
-#ifdef HAVE_HEADER
 	sz = roundup_pow2(size+sizeof(struct free_block));
-#else
-	sz = roundup_pow2(size);
-#endif
 	idx = get_list_index_by_size(sz);
+	// if there is no available free block, then allocate a new page
 	if(ctl->free_list[idx].next == NULL) {
 		item = ctl->page_list.next;
 		while(item != &(ctl->page_list)) {
@@ -272,17 +268,12 @@ kma_malloc(kma_size_t size)
 	}
 	block = ctl->free_list[idx].next;
 	ctl->free_list[idx].next = block->next;
-#ifdef HAVE_HEADER
 	block->next = (void*)&(ctl->free_list[idx]);
-#endif
 
 	ctl->total_alloc++;
 	
-#ifdef HAVE_HEADER
+	// if have header, then return the actual address to user
 	return (void*)(block+1);
-#else
-	return (void*)block;
-#endif
 }
 
 void
@@ -293,18 +284,13 @@ kma_free(void* ptr, kma_size_t size)
 	struct free_block *block;
 	struct block_list *list;
 	int count = 0;
-#ifdef HAVE_HEADER
-#endif
 	kma_page_t *page_array[MAXPAGES];
 	assert(ctl);
 
 	block = (struct free_block*)ptr;
-#ifdef HAVE_HEADER
 	block -= 1;
 	list = (struct block_list*)(block->next);
-#else
-	list = &(ctl->free_list[get_list_index_by_size(roundup_pow2(size))]);
-#endif
+
 	block->next = list->next;
 	list->next = block;
 

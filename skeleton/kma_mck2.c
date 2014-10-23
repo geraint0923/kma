@@ -67,7 +67,7 @@
 #define PAGE_BIT_LEN	((PAGESIZE==8192)?(13):((PAGESIZE==4096)?12:11))
 
 
-
+// a fast helper to calculate the nearest power of 2
 inline int roundup_pow2(int v) {
 	v--;
 	v |= v >> 1;
@@ -79,25 +79,18 @@ inline int roundup_pow2(int v) {
 	return v;
 }
 
-
+// get the start address of a page
 inline void *get_page_start(void *addr) {
 	return (void*)((unsigned long)addr & ~((unsigned long)(PAGESIZE-1)));
 };
 
+// get the start address of the next page
 inline void *get_page_end(void *addr) {
 	return (void*)((char*)get_page_start(addr) + PAGESIZE);
 }
 
 
-int get_set_bit_num(unsigned int i)
-{
-	i = i - ((i >> 1) & 0x55555555);
-	i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
-	return (((i + (i >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
-}
-
-
-
+// the entry point of the first page
 static kma_page_t *first_page = NULL;
 struct page_map {
 	struct page_item *page;
@@ -118,6 +111,7 @@ struct block_list {
 	struct free_block *next;
 };
 
+// the control unit of this allocator
 struct mck2_ctl {
 	int total_alloc;
 	int total_free;
@@ -132,6 +126,9 @@ inline struct mck2_ctl *get_mck2_ctl() {
 	return (struct mck2_ctl*)(first_page->ptr);
 }
 
+/*
+ * list operations for list item
+ */
 void list_append(struct page_item *item, struct page_item *header) {
 	item->prev = header->prev;
 	item->next = header;
@@ -158,12 +155,14 @@ void list_remove(struct page_item *item) {
 	item->next->prev = item->prev;
 }
 
+// to get the page map index by specified pointer or address
 static inline int get_page_map_index(void *ptr) {
 	return (((unsigned long)ptr)>>PAGE_BIT_LEN)&(PAGESIZE/sizeof(struct page_map)-1);
 }
 
 extern struct page_item *get_unused_page_item();
 
+// to insert a page item into the page map
 static void insert_page_map(struct page_item *item) {
 	int idx;
 	struct page_item *cur;
@@ -191,6 +190,7 @@ static void insert_page_map(struct page_item *item) {
 	map_arr[idx].page = item;
 }
 
+// find a page item using a specified address
 static struct page_item *find_page_item_by_addr(void *ptr) {
 	struct page_item *cur;
 	struct mck2_ctl *ctl = get_mck2_ctl();
@@ -200,6 +200,7 @@ static struct page_item *find_page_item_by_addr(void *ptr) {
 	cur = ctl->page_map_list.next;
 	idx = get_page_map_index(ptr);
 	ptr = get_page_start(ptr);
+	// traverse all the page map to find the specified page
 	while(cur != &(ctl->page_map_list)) {
 		map_arr = (struct page_map*)cur->page->ptr;
 		if(map_arr[idx].page && map_arr[idx].page->page->ptr == ptr)
@@ -210,6 +211,7 @@ static struct page_item *find_page_item_by_addr(void *ptr) {
 	return NULL;
 }
 
+// add and initialize all the list items in a new allocated page
 void add_page_for_page_item() {
 	struct mck2_ctl *ctl = get_mck2_ctl();
 	struct page_item *cur, *end;
@@ -218,6 +220,7 @@ void add_page_for_page_item() {
 	page = get_page();
 	cur = (struct page_item*)(page->ptr);
 	end = (struct page_item*)get_page_end(cur);
+	// initialize all the list items
 	for(; cur + 1 < end; cur++) {
 		list_append(cur, &(ctl->unused_list));
 	}
@@ -226,8 +229,10 @@ void add_page_for_page_item() {
 	list_append(cur, &(ctl->page_list));
 }
 
+// add the free blocks in one page to a specified free list
 void add_page_for_idx(int idx) {
 	struct mck2_ctl *ctl = get_mck2_ctl();
+	// set the target size
 	int sz = 1 << (idx + SIZE_OFFSET);
 	char *cur, *end;
 	struct free_block *block;
@@ -237,6 +242,7 @@ void add_page_for_idx(int idx) {
 	page = get_page();
 	cur = (char*)(page->ptr);
 	end = (char*)get_page_end(cur);
+	// add to free list
 	for(; cur + sz <= end; cur += sz) {
 		block = (struct free_block*)cur;
 		block->next = ctl->free_list[idx].next;
@@ -250,6 +256,7 @@ void add_page_for_idx(int idx) {
 	insert_page_map(item);
 }
 
+// initialize the first control page
 void init_first_page() {
 	struct mck2_ctl *ctl;
 	struct page_item *cur, *end;
@@ -265,15 +272,19 @@ void init_first_page() {
 	ctl->page_map_list.prev = ctl->page_map_list.next = &(ctl->page_map_list);
 	cur = (struct page_item*)((char*)ctl + sizeof(struct mck2_ctl));
 	end = (struct page_item*)get_page_end((void*)cur);
+
+	// use the rest room of the first page
 	for(; cur + 1 < end; cur++) {
 		list_append(cur, &(ctl->unused_list));
 	}
 
+	// initialize all the free list
 	for(i = 0; i < SIZE_NUM; i++) {
 		ctl->free_list[i].next = NULL;
 	}
 }
 
+// get unused list item
 struct page_item *get_unused_page_item() {
 	struct mck2_ctl *ctl = get_mck2_ctl();
 	struct page_item *node;
@@ -285,12 +296,15 @@ struct page_item *get_unused_page_item() {
 	return node;
 };
 
+// return the list item to unused list
 void put_unused_page_item(struct page_item *node) {
 	struct mck2_ctl *ctl = get_mck2_ctl();
 	assert(node);
 	list_insert_head(node, &(ctl->unused_list));
 }
 
+
+// calculate the log2
 int get_list_index_by_size(int sz) {
 	int ret = 3;
 	sz >>= 3;
@@ -320,6 +334,7 @@ kma_malloc(kma_size_t size)
 
 	idx = get_list_index_by_size(sz);
 
+	// add page if the target free list is empty
 	if(ctl->free_list[idx].next == NULL) {
 		add_page_for_idx(idx);
 	}
@@ -355,13 +370,16 @@ kma_free(void* ptr, kma_size_t size)
 
 	ctl->total_free++;
 
+	// free all the pages after all the requests have been done
 	if(ctl->total_alloc == ctl->total_free) {
+		// traverse the control page list
 		cur = ctl->page_list.next;
 		while(cur != &(ctl->page_list)) {
 			assert(cur->page->ptr);
 			page_array[count++] = cur->page;
 			cur = cur->next;
 		}
+		// traverse the page map list
 		cur = ctl->page_map_list.next;
 		while(cur != &(ctl->page_map_list)) {
 			assert(cur->page->ptr);

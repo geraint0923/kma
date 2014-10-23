@@ -52,8 +52,8 @@ Average  = 64.69%
 
 ii. Latency(nanosecond)
 				Best		Worst		Average
-KMA_MALLOC		36			3885793		133
-KMA_FREE		43			991815		112
+KMA_MALLOC		31			3885793		123
+KMA_FREE		34			991815		103
 
 iii. Design
 In my implementation of Buddy system, I use 32 bytes as the smallest memory block size. And I do a lot 
@@ -81,14 +81,14 @@ Extra Points:
 (1) SVR4 Lazy Buddy
 
 i. Efficiency
-Best  = 71.27%
+Best  = 71.50%
 Worst  = 0.002%
-Average  = 62.25%
+Average  = 62.47%
 
 ii. Latency(nanosecond)
 				Best		Worst		Average
-KMA_MALLOC		43			3837888		142
-KMA_FREE		37			1116976		111
+KMA_MALLOC		43			3837888		136
+KMA_FREE		37			1116976		112
 
 iii. Design
 For the lazy buddy, I implemented it by reusing the source code of Buddy system I have implemented. So in 

@@ -366,7 +366,7 @@ static void insert_page_map(struct page_item *item) {
 	map_arr[idx].page = item;
 }
 
-// given an 
+// given an address, to find the corresponding page item
 static struct page_item *find_page_item_by_addr(void *ptr) {
 	struct page_item *cur;
 	struct bud_ctl *ctl = get_bud_ctl();

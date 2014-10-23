@@ -227,6 +227,7 @@ void *first_fit(kma_size_t size) {
 	ptr = cur->addr;
 	cur->addr = (void*)((char*)cur->addr + size);
 	cur->size -= size;
+	// remove the free block from free list if the remaining size is zero
 	if(cur->size == 0) {
 		if(found)
 			list_remove(cur);
@@ -291,6 +292,7 @@ kma_free(void* ptr, kma_size_t size)
 			break;
 		} else if(base_addr == get_page_start(cur->addr) &&
 				(cur->addr == (void*)((char*)ptr + size))) {
+			// merge the freed block with the block behind it
 			cur->addr = ptr;
 			cur->size += size;
 			done = 1;

@@ -64,7 +64,7 @@
 #define SIZE_OFFSET	(4)
 
 
-
+// a fast helper to round up the size
 inline int roundup_pow2(int v) {
 	v--;
 	v |= v >> 1;
@@ -77,27 +77,20 @@ inline int roundup_pow2(int v) {
 }
 
 
+// get the start address of the page
 inline void *get_page_start(void *addr) {
 	return (void*)((unsigned long)addr & ~((unsigned long)(PAGESIZE-1)));
 };
 
+// get the start address of the next page
 inline void *get_page_end(void *addr) {
 	return (void*)((char*)get_page_start(addr) + PAGESIZE);
 }
 
-
-int get_set_bit_num(unsigned int i)
-{
-	i = i - ((i >> 1) & 0x55555555);
-	i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
-	return (((i + (i >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
-}
-
-
-
+// the entry point of the first page
 static kma_page_t *first_page = NULL;
 
-
+// save the information of page
 struct page_item {
 	kma_page_t *page;
 	int start;
@@ -117,17 +110,21 @@ struct block_list {
 struct p2fl_ctl {
 	int total_alloc;
 	int total_free;
-	struct block_list free_list[SIZE_NUM];
+	struct block_list free_list[SIZE_NUM];		// different size of free lists
 	struct page_item unused_list;
 	struct page_item page_list;
 	struct page_item ctl_page_list;
 };
 
+// get the control unit of P2FL
 struct p2fl_ctl *get_p2fl_ctl() {
 	assert(first_page);
 	return (struct p2fl_ctl*)(first_page->ptr);
 }
 
+/*
+ * list operations helpers
+ */
 void list_append(struct page_item *item, struct page_item *header) {
 	item->prev = header->prev;
 	item->next = header;
@@ -156,6 +153,7 @@ void list_remove(struct page_item *item) {
 
 extern struct page_item *get_unused_page_item();
 
+// allocate new page for more list item
 void add_page_for_page_item() {
 	struct p2fl_ctl *ctl = get_p2fl_ctl();
 	struct page_item *cur, *end;
@@ -172,6 +170,7 @@ void add_page_for_page_item() {
 	list_append(cur, &(ctl->ctl_page_list));
 }
 
+// initialize the first page
 void init_first_page() {
 	struct p2fl_ctl *ctl;
 	struct page_item *cur, *end;
@@ -187,16 +186,19 @@ void init_first_page() {
 	ctl->ctl_page_list.prev = ctl->ctl_page_list.next = &(ctl->ctl_page_list);
 	cur = (struct page_item*)((char*)ctl + sizeof(struct p2fl_ctl));
 	end = (struct page_item*)get_page_end((void*)cur);
+	// add the rest room of the first page to list item list
 	for(; cur + 1 < end; cur++) {
 		list_append(cur, &(ctl->unused_list));
 	}
 
+	// initialize the free lists
 	for(i = 0; i < SIZE_NUM; i++) {
 		ctl->free_list[i].size = (1<< (i+SIZE_OFFSET));
 		ctl->free_list[i].next = NULL;
 	}
 }
 
+// get the unused list item
 struct page_item *get_unused_page_item() {
 	struct p2fl_ctl *ctl = get_p2fl_ctl();
 	struct page_item *node;
@@ -208,12 +210,14 @@ struct page_item *get_unused_page_item() {
 	return node;
 };
 
+// return the unused list item to the unused list item list
 void put_unused_page_item(struct page_item *node) {
 	struct p2fl_ctl *ctl = get_p2fl_ctl();
 	assert(node);
 	list_insert_head(node, &(ctl->unused_list));
 }
 
+// get the order of a specified size
 int get_list_index_by_size(int sz) {
 	int ret = 3;
 	sz >>= 3;
@@ -297,6 +301,7 @@ kma_free(void* ptr, kma_size_t size)
 	
 	ctl->total_free++;
 
+	// free all the pages after all the requests have been done
 	if(ctl->total_alloc == ctl->total_free) {
 		cur = ctl->page_list.next;
 		while(cur != &(ctl->page_list)) {

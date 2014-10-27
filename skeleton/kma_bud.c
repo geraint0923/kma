@@ -496,12 +496,12 @@ static struct page_item *find_page_item_by_addr(void *ptr) {
 	idx = get_page_map_index(ptr);
 	ptr = get_page_start(ptr);
 	// traverse the page map to get a page item
-	while(likely(cur != &(ctl->page_map_list))) {
+//	while(likely(cur != &(ctl->page_map_list))) {
 		map_arr = (struct page_map*)cur->page->ptr;
 		if(likely(map_arr[idx].page && map_arr[idx].page->page->ptr == ptr))
 			return map_arr[idx].page;
-		cur = cur->next;
-	}
+//		cur = cur->next;
+//	}
 	return NULL;
 }
 

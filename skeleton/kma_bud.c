@@ -734,7 +734,7 @@ kma_malloc(kma_size_t size)
 	ctl->total_alloc++;
 
 	//idx = get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition, __roundup_pow2(size));
-	idx = get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition, __roundup_pow2(size));
+	idx = get_list_index_by_size(NULL, size);
 	return (void*)get_free_block(idx, size);
 }
 
@@ -748,8 +748,8 @@ kma_free(void* ptr, kma_size_t size)
 	//assert(ctl);
 
 	//put_free_block((struct free_block*)ptr, get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition,
-	put_free_block((struct free_block*)ptr, get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition,
-				__roundup_pow2(size)), size);
+//				__roundup_pow2(size)), size);
+	put_free_block((struct free_block*)ptr, get_list_index_by_size(NULL, size), size);
 	ctl->total_free++;
 
 	// return all the pages if all the requests are done

@@ -262,7 +262,7 @@ void add_page_for_bitmap() {
 }
 
 // to get the order by specifying a size
-inline int get_list_index_by_size(int *table, int sz) {
+inline int _get_list_index_by_size(int *table, int sz) {
 	/*
 	int ret = 3;
 	sz >>= 3;
@@ -276,6 +276,27 @@ inline int get_list_index_by_size(int *table, int sz) {
 	int ret = table[(unsigned int)(sz*0x077CB531U)>>27];
 	ret -= SIZE_OFFSET;
 	return ret <= 0 ? 0 : ret;
+}
+
+inline int get_list_index_by_size(int *table, int sz) {
+	if(sz <= 32)
+		return 0;
+	else if(sz <= 64)
+		return 1;
+	else if(sz <= 128)
+		return 2;
+	else if(sz <= 256)
+		return 3;
+	else if(sz <= 512)
+		return 4;
+	else if(sz <= 1024)
+		return 5;
+	else if(sz <= 2048)
+		return 6;
+	else if(sz <= 4096)
+		return 7;
+	else
+		return 8;
 }
 
 // initialize the control unit on the first page
@@ -494,15 +515,15 @@ static struct page_item *find_page_item_by_addr(void *ptr) {
 	//assert(ptr);
 	cur = ctl->page_map_list.next;
 	idx = get_page_map_index(ptr);
-	ptr = get_page_start(ptr);
+//	ptr = get_page_start(ptr);
 	// traverse the page map to get a page item
 //	while(likely(cur != &(ctl->page_map_list))) {
 		map_arr = (struct page_map*)cur->page->ptr;
-		if(likely(map_arr[idx].page && map_arr[idx].page->page->ptr == ptr))
+//		if(likely(map_arr[idx].page && map_arr[idx].page->page->ptr == ptr))
 			return map_arr[idx].page;
 //		cur = cur->next;
 //	}
-	return NULL;
+//	return NULL;
 }
 
 // remove the page item map in page map when a work page is freed
@@ -712,6 +733,7 @@ kma_malloc(kma_size_t size)
 
 	ctl->total_alloc++;
 
+	//idx = get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition, __roundup_pow2(size));
 	idx = get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition, __roundup_pow2(size));
 	return (void*)get_free_block(idx, size);
 }
@@ -725,6 +747,7 @@ kma_free(void* ptr, kma_size_t size)
 	kma_page_t *page_array[MAXPAGES];
 	//assert(ctl);
 
+	//put_free_block((struct free_block*)ptr, get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition,
 	put_free_block((struct free_block*)ptr, get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition,
 				__roundup_pow2(size)), size);
 	ctl->total_free++;

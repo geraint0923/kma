@@ -351,7 +351,7 @@ static struct page_item *find_page_item_by_addr(void*);
 static void remove_page_map_by_addr(void*);
 
 // get a list item from unused list item list
-inline struct page_item *get_unused_page_item(int need_bitmap) {
+struct page_item *get_unused_page_item(int need_bitmap) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *node, *tp;
 	unsigned char *bmp;
@@ -400,7 +400,7 @@ void put_unused_page_item(struct page_item *node, int have_bitmap) {
 }
 
 // get a unused bitmap
-inline unsigned char *get_bitmap() {
+unsigned char *get_bitmap() {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *node, *tp;
 	//assert(ctl);
@@ -415,7 +415,7 @@ inline unsigned char *get_bitmap() {
 }
 
 // return a bitmap when a work page is freed
-inline void put_bitmap(unsigned char *bmp) {
+void put_bitmap(unsigned char *bmp) {
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_item *tp;
 	unsigned char *cur, *end;
@@ -455,7 +455,7 @@ static inline int get_page_map_index(void *ptr) {
 }
 
 // insert a new page item into the page map
-inline static void insert_page_map(struct page_item *item) {
+static void insert_page_map(struct page_item *item) {
 	int idx;
 	struct page_item *cur;
 	struct bud_ctl *ctl = get_bud_ctl();
@@ -485,7 +485,7 @@ inline static void insert_page_map(struct page_item *item) {
 }
 
 // find a page item using an address
-inline static inline struct page_item *find_page_item_by_addr(void *ptr) {
+static struct page_item *find_page_item_by_addr(void *ptr) {
 	struct page_item *cur;
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_map *map_arr;
@@ -505,7 +505,7 @@ inline static inline struct page_item *find_page_item_by_addr(void *ptr) {
 }
 
 // remove the page item map in page map when a work page is freed
-inline static inline void remove_page_map_by_addr(void *ptr) {
+static void remove_page_map_by_addr(void *ptr) {
 	struct page_item *cur;
 	struct bud_ctl *ctl = get_bud_ctl();
 	struct page_map *map_arr;

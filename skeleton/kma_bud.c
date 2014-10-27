@@ -155,7 +155,7 @@ inline int get_bit(unsigned char *bitmap, int idx) {
 // a helper to get the control unit
 inline struct bud_ctl *get_bud_ctl() {
 	//assert(first_page);
-	return (struct bud_ctl*)(first_page->ptr);
+	return (struct bud_ctl*)(first_page->ptr + sizeof(struct page_item));
 }
 
 /*
@@ -290,7 +290,12 @@ void init_first_page() {
 	};
 	first_page = get_page();
 	memset(first_page->ptr, 0, first_page->size);
-	ctl = (struct bud_ctl*)(first_page->ptr);
+	cur = (struct page_item*)first_page->ptr;
+	cur->bitmap = (unsigned char*)0x1;
+	cur->page = first_page;
+	fp = cur;
+	cur++;
+	ctl = (struct bud_ctl*)cur;
 	ctl->total_alloc = 0;
 	ctl->total_free = 0;
 
@@ -305,12 +310,7 @@ void init_first_page() {
 	ctl->work_page_list.prev = ctl->work_page_list.next = &(ctl->work_page_list);
 	ctl->page_map_list.prev = ctl->page_map_list.next = &(ctl->page_map_list);
 	cur = (struct page_item*)((char*)ctl + sizeof(struct bud_ctl));
-	cur->bitmap = NULL;
-	cur->bitmap += 999999;
 	//list_append(cur, &(ctl->ctl_page_list));
-	cur->page = first_page;
-	fp = cur;
-	cur++;
 	rsv = cur;
 	cur++;
 	end = (struct page_item*)get_page_end((void*)cur);
@@ -366,8 +366,7 @@ inline struct page_item *get_unused_page_item(int need_bitmap) {
 	list_remove(node);
 //	tp = find_page_item_by_addr((void*)node);
 	tp = (struct page_item*)get_page_start((void*)node);
-	if(tp != (struct page_item*)first_page->ptr)
-		tp->bitmap++;
+	tp->bitmap++;
 	return node;
 };
 
@@ -385,19 +384,17 @@ void put_unused_page_item(struct page_item *node, int have_bitmap) {
 		list_append(node, &(ctl->unused_list));
 //	tp = find_page_item_by_addr((void*)node);
 	tp = (struct page_item*)get_page_start((void*)node);
-	if(tp != (struct page_item*)first_page->ptr) {
-		tp->bitmap--;
-		if(unlikely(tp->bitmap == NULL)) {
-			cur = (struct page_item*)tp->page->ptr;
-			end = (struct page_item*)((char*)cur + PAGESIZE);
-			for(; cur + 1 <= end; cur++){
-				list_remove(cur);
-			}
-//			remove_page_map_by_addr(tp->page->ptr);
-//			list_remove(tp);
-			free_page(tp->page);
-//			put_unused_page_item(tp, 0);
+	tp->bitmap--;
+	if(unlikely(tp->bitmap == NULL)) {
+		cur = (struct page_item*)tp->page->ptr;
+		end = (struct page_item*)((char*)cur + PAGESIZE);
+		for(; cur + 1 <= end; cur++){
+			list_remove(cur);
 		}
+//		remove_page_map_by_addr(tp->page->ptr);
+//		list_remove(tp);
+		free_page(tp->page);
+//		put_unused_page_item(tp, 0);
 	}
 }
 

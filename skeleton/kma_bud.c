@@ -113,7 +113,6 @@ struct bud_ctl {
 	struct block_list free_list[SIZE_NUM];		// free lists with different size
 	int MultiplyDeBruijnBitPosition[32];
 	kma_page_t *cur_page;
-	int cur_used;
 	int max_order;
 	struct page_item unused_list;
 	struct page_item bitmap_list;

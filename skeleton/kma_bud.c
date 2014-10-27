@@ -303,6 +303,7 @@ void init_first_page() {
 		ctl->MultiplyDeBruijnBitPosition[i] = _MultiplyDeBruijnBitPosition[i];
 	}
 
+	// initialize the page item list for the control unit of buddy system
 	ctl->max_order = get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition, PAGESIZE);
 	ctl->unused_list.prev = ctl->unused_list.next = &(ctl->unused_list);
 	ctl->bitmap_list.prev = ctl->bitmap_list.next = &(ctl->bitmap_list);
@@ -311,6 +312,7 @@ void init_first_page() {
 	ctl->page_map_list.prev = ctl->page_map_list.next = &(ctl->page_map_list);
 	cur = (struct page_item*)((char*)ctl + sizeof(struct bud_ctl));
 	//list_append(cur, &(ctl->ctl_page_list));
+	// here we reserve a page item for page map
 	rsv = cur;
 	cur++;
 	end = (struct page_item*)get_page_end((void*)cur);

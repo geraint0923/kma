@@ -69,6 +69,7 @@
 #define PAGE_INDEX_MASK	(~(PAGESIZE-1))
 #define PAGE_BIT_LEN	((PAGESIZE==8192)?(13):((PAGESIZE==4096)?12:11))
 #define SIZE_NUM	(PAGE_BIT_LEN+1-SIZE_OFFSET)
+//#defin REUSE_PAGE_ITEM
 
 
 // get the start address of the specified page
@@ -618,8 +619,10 @@ inline struct free_block *get_free_block(int order, int sz) {
 	struct page_item *item;
 	//assert(ctl);
 
+#ifdef REUSE_PAGE_ITEM
 	if(sz <= sizeof(struct page_item))
 		return (struct free_block*)get_unused_page_item(0);
+#endif
 
 	// find a available block
 	for(i = order; i <= ctl->max_order; i++) {
@@ -655,10 +658,12 @@ inline void put_free_block(struct free_block *block, int order, int sz) {
 	int idx;
 	//assert(ctl);
 
+#ifdef REUSE_PAGE_ITEM
 	if(sz <= sizeof(struct page_item)) {
 		put_unused_page_item((struct page_item*)block, 0);
 		return;
 	}
+#endif
 
 	item = find_page_item_by_addr((void*)block);
 	idx = get_block_index((void*)block);

@@ -229,14 +229,14 @@ void add_page_for_page_item() {
 	end = (struct page_item*)get_page_end(cur);
 	for(; cur + 1 <= end; cur++) {
 		cur->bitmap = NULL;
-		list_insert_head(cur, &(ctl->unused_list));
+		list_append(cur, &(ctl->unused_list));
 	}
 	cur = ctl->unused_list.next;
 	list_remove(cur);
 	cur->page = page;
 	cur->bitmap = NULL;
-	cur->bitmap++;
-	insert_page_map(cur);
+//	cur->bitmap++;
+//	insert_page_map(cur);
 	list_append(cur, &(ctl->ctl_page_list));
 }
 
@@ -364,8 +364,10 @@ inline struct page_item *get_unused_page_item(int need_bitmap) {
 	} else
 		node = ctl->unused_list.next;
 	list_remove(node);
-	tp = find_page_item_by_addr((void*)node);
-	tp->bitmap++;
+//	tp = find_page_item_by_addr((void*)node);
+	tp = (struct page_item*)get_page_start((void*)node);
+	if(tp != (struct page_item*)first_page->ptr)
+		tp->bitmap++;
 	return node;
 };
 
@@ -381,18 +383,21 @@ void put_unused_page_item(struct page_item *node, int have_bitmap) {
 		list_insert_head(node, &(ctl->unused_list));
 	else
 		list_append(node, &(ctl->unused_list));
-	tp = find_page_item_by_addr((void*)node);
-	tp->bitmap--;
-	if(unlikely(tp->bitmap == (unsigned char*)0x1)) {
-		cur = (struct page_item*)tp->page->ptr;
-		end = (struct page_item*)((char*)cur + PAGESIZE);
-		for(; cur + 1 <= end; cur++){
-			list_remove(cur);
+//	tp = find_page_item_by_addr((void*)node);
+	tp = (struct page_item*)get_page_start((void*)node);
+	if(tp != (struct page_item*)first_page->ptr) {
+		tp->bitmap--;
+		if(unlikely(tp->bitmap == NULL)) {
+			cur = (struct page_item*)tp->page->ptr;
+			end = (struct page_item*)((char*)cur + PAGESIZE);
+			for(; cur + 1 <= end; cur++){
+				list_remove(cur);
+			}
+//			remove_page_map_by_addr(tp->page->ptr);
+//			list_remove(tp);
+			free_page(tp->page);
+//			put_unused_page_item(tp, 0);
 		}
-		remove_page_map_by_addr(tp->page->ptr);
-//		list_remove(tp);
-		free_page(tp->page);
-		//put_unused_page_item(tp, 0);
 	}
 }
 

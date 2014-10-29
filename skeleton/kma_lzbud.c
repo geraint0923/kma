@@ -490,7 +490,7 @@ struct free_block *get_free_block(int order) {
 			end_order = i;
 			block_list_remove(block);
 			item = find_page_item_by_addr((void*)block);
-			if(test_block_unused(item->bitmap, get_block_index(block))) {
+			if(!test_block_unused(item->bitmap, get_block_index(block))) {
 				// local free
 				ctl->free_list[i].slack += 2;
 			} else {

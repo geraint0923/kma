@@ -257,7 +257,7 @@ void add_page_for_bitmap() {
 }
 
 
-inline int get_list_index_by_size(int *table, int sz) {
+inline int _get_list_index_by_size(int *table, int sz) {
 	/*
 	int ret = 3;
 	sz >>= 3;
@@ -271,6 +271,25 @@ inline int get_list_index_by_size(int *table, int sz) {
 	int ret = table[(unsigned int)(sz*0x077CB531U)>>27];
 	ret -= SIZE_OFFSET;
 	return ret <= 0 ? 0 : ret;
+}
+
+inline int get_list_index_by_size(int *table, int sz) {
+	if(sz <= 64)
+		return 0;
+	else if(sz <= 128)
+		return 1;
+	else if(sz <= 256)
+		return 2;
+	else if(sz <= 512)
+		return 3;
+	else if(sz <= 1024)
+		return 4;
+	else if(sz <= 2048)
+		return 5;
+	else if(sz <= 4096)
+		return 6;
+	else
+		return 7;
 }
 
 void init_first_page() {
@@ -707,7 +726,8 @@ kma_malloc(kma_size_t size)
 
 	ctl->total_alloc++;
 
-	idx = get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition, __roundup_pow2(size + 1));
+//	idx = get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition, __roundup_pow2(size + 1));
+	idx = get_list_index_by_size(NULL, size + 1);
 	return get_free_block(idx, size);
 }
 
@@ -720,8 +740,9 @@ kma_free(void* ptr, kma_size_t size)
 	kma_page_t *page_array[MAXPAGES];
 	//assert(ctl);
 
-	put_free_block((struct free_block*)ptr, get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition,
-				__roundup_pow2(size + 1)), size);
+//	put_free_block((struct free_block*)ptr, get_list_index_by_size(ctl->MultiplyDeBruijnBitPosition,
+//				__roundup_pow2(size + 1), size);
+	put_free_block((struct free_block*)ptr, get_list_index_by_size(NULL, size + 1), size);
 	ctl->total_free++;
 
 	// return all the pages if all the requests are done

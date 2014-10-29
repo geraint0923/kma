@@ -45,6 +45,7 @@
 #include "kma_page.h"
 #include "kma.h"
 
+
 /************Defines and Typedefs*****************************************/
 /*  #defines and typedefs should have their names in all caps.
  *  Global variables begin with g. Global constants with k. Local
@@ -60,263 +61,165 @@
 
 /**************Implementation***********************************************/
 
-#define SIZE_NUM	(20)
-#define SIZE_OFFSET	(4)
+#define likely(x)       __builtin_expect(!!(x), 1)
+#define unlikely(x)     __builtin_expect(!!(x), 0)
 
-
-// a fast helper to round up the size
-inline int roundup_pow2(int v) {
-	v--;
-	v |= v >> 1;
-	v |= v >> 2;
-	v |= v >> 4;
-	v |= v >> 8;
-	v |= v >> 16;
-	v++;
-	return v;
-}
-
-
-// get the start address of the page
-inline void *get_page_start(void *addr) {
-	return (void*)((unsigned long)addr & ~((unsigned long)(PAGESIZE-1)));
-};
-
-// get the start address of the next page
-inline void *get_page_end(void *addr) {
-	return (void*)((char*)get_page_start(addr) + PAGESIZE);
-}
-
-// the entry point of the first page
-static kma_page_t *first_page = NULL;
-
-// save the information of page
-struct page_item {
-	kma_page_t *page;
-	int start;
-	struct page_item *prev;
-	struct page_item *next;
-};
+#define SIZE_NUM	(13)
+#define SIZE_OFFSET	(5)
 
 struct free_block {
-	void *next;
-};
-
-struct block_list {
-	int size;
+	kma_page_t *page;
+	int ref_count;
+	struct free_block *prev;
 	struct free_block *next;
 };
 
 struct p2fl_ctl {
 	int total_alloc;
 	int total_free;
-	struct block_list free_list[SIZE_NUM];		// different size of free lists
-	struct page_item unused_list;
-	struct page_item page_list;
-	struct page_item ctl_page_list;
+	struct free_block free_list[SIZE_NUM];
 };
 
-// get the control unit of P2FL
-struct p2fl_ctl *get_p2fl_ctl() {
-	assert(first_page);
-	return (struct p2fl_ctl*)(first_page->ptr);
-}
-
 /*
- * list operations helpers
+ * list manipulation functions
  */
-void list_append(struct page_item *item, struct page_item *header) {
+inline void list_append(struct free_block *item, struct free_block *header) {
 	item->prev = header->prev;
 	item->next = header;
 	header->prev = item;
 	item->prev->next = item;
 }
 
-void list_insert_head(struct page_item *item, struct page_item *header) {
+// get the start address of the specified page
+inline void *get_page_start(void *addr) {
+	return (void*)((unsigned long)addr & ~((unsigned long)(PAGESIZE-1)));
+};
+// get the start address of the next page
+inline void *get_page_end(void *addr) {
+	return (void*)((char*)get_page_start(addr) + PAGESIZE);
+}
+
+
+
+inline void list_insert_head(struct free_block *item, struct free_block *header) {
 	item->prev = header;
 	item->next = header->next;
 	header->next = item;
 	item->next->prev = item;
 }
 
-void list_insert_before(struct page_item *item, struct page_item *target) {
+inline void list_insert_before(struct free_block *item, struct free_block *target) {
 	item->prev = target->prev;
 	item->next = target;
 	item->prev->next = item;
 	item->next->prev = item;
 }
 
-void list_remove(struct page_item *item) {
+inline void list_remove(struct free_block *item) {
 	item->prev->next = item->next;
 	item->next->prev = item->prev;
 }
 
-extern struct page_item *get_unused_page_item();
-
-// allocate new page for more list item
-void add_page_for_page_item() {
-	struct p2fl_ctl *ctl = get_p2fl_ctl();
-	struct page_item *cur, *end;
-	kma_page_t *page;
-	assert(ctl);
-	page = get_page();
-	cur = (struct page_item*)(page->ptr);
-	end = (struct page_item*)get_page_end(cur);
-	for(; cur + 1 < end; cur++) {
-		list_append(cur, &(ctl->unused_list));
-	}
-	cur = get_unused_page_item();
-	cur->page = page;
-	list_append(cur, &(ctl->ctl_page_list));
+inline int get_list_index_by_size(int sz) {
+	if(sz <= 32)
+		return 0;
+	else if(sz <= 64)
+		return 1;
+	else if(sz <= 128)
+		return 2;
+	else if(sz <= 256)
+		return 3;
+	else if(sz <= 512)
+		return 4;
+	else if(sz <= 1024)
+		return 5;
+	else if(sz <= 2048)
+		return 6;
+	else if(sz <= 4096)
+		return 7;
+	else
+		return 8;
 }
 
-// initialize the first page
-void init_first_page() {
-	struct p2fl_ctl *ctl;
-	struct page_item *cur, *end;
-	int i;
-	first_page = get_page();
-	memset(first_page->ptr, 0, first_page->size);
-	ctl = (struct p2fl_ctl*)(first_page->ptr);
-	ctl->total_alloc = 0;
-	ctl->total_free = 0;
+static kma_page_t *first_page = NULL;
 
-	ctl->unused_list.prev = ctl->unused_list.next = &(ctl->unused_list);
-	ctl->page_list.prev = ctl->page_list.next = &(ctl->page_list);
-	ctl->ctl_page_list.prev = ctl->ctl_page_list.next = &(ctl->ctl_page_list);
-	cur = (struct page_item*)((char*)ctl + sizeof(struct p2fl_ctl));
-	end = (struct page_item*)get_page_end((void*)cur);
-	// add the rest room of the first page to list item list
-	for(; cur + 1 < end; cur++) {
-		list_append(cur, &(ctl->unused_list));
-	}
-
-	// initialize the free lists
-	for(i = 0; i < SIZE_NUM; i++) {
-		ctl->free_list[i].size = (1<< (i+SIZE_OFFSET));
-		ctl->free_list[i].next = NULL;
-	}
+// a helper to get the control unit
+inline struct p2fl_ctl *get_p2fl_ctl() {
+	//assert(first_page);
+	return (struct p2fl_ctl*)(first_page->ptr);
 }
-
-// get the unused list item
-struct page_item *get_unused_page_item() {
-	struct p2fl_ctl *ctl = get_p2fl_ctl();
-	struct page_item *node;
-	assert(ctl);
-	if(ctl->unused_list.prev == &(ctl->unused_list))
-		add_page_for_page_item();
-	node = ctl->unused_list.next;
-	list_remove(node);
-	return node;
-};
-
-// return the unused list item to the unused list item list
-void put_unused_page_item(struct page_item *node) {
-	struct p2fl_ctl *ctl = get_p2fl_ctl();
-	assert(node);
-	list_insert_head(node, &(ctl->unused_list));
-}
-
-// get the order of a specified size
-int get_list_index_by_size(int sz) {
-	int ret = 3;
-	sz >>= 3;
-	while(sz != 1) {
-		sz >>= 1;
-		ret++;
-	}
-	ret -= SIZE_OFFSET;
-	return ret <= 0 ? 0 : ret;
-}
-
 
 void*
 kma_malloc(kma_size_t size)
 {
 	struct p2fl_ctl *ctl;
-	int sz, idx;
-	struct page_item *item;
-	kma_page_t *page;
-	struct free_block *block;
-	int found = 0;
-	if(size + sizeof(void*) > PAGESIZE)
-		return NULL;
-	if(!first_page) {
-		init_first_page();
+	int i, order, len;
+	struct free_block *block, *cur, *end;
+	kma_page_t *pp;
+	if(unlikely(!first_page)) {
+		first_page = get_page();
+		ctl = get_p2fl_ctl();
+		ctl->total_alloc = 0;
+		ctl->total_free = 0;
+		for(i = 0; i < SIZE_NUM; i++) {
+			ctl->free_list[i].prev = ctl->free_list[i].next = &(ctl->free_list[i]);
+		}
 	}
 	ctl = get_p2fl_ctl();
-
-	sz = roundup_pow2(size+sizeof(struct free_block));
-	idx = get_list_index_by_size(sz);
-	// if there is no available free block, then allocate a new page
-	if(ctl->free_list[idx].next == NULL) {
-		item = ctl->page_list.next;
-		while(item != &(ctl->page_list)) {
-			if(item->start + sz < item->page->size) {
-				found = 1;
-				break;
-			}
-			item = item->next;
-		}
-		if(!found) {
-			page = get_page();
-			item = get_unused_page_item();
-			item->page = page;
-			item->start = 0;
-			list_append(item, &(ctl->page_list));
-		}
-		block = (struct free_block*)((char*)item->page->ptr + item->start);
-		item->start += sz;
-		block->next = (void*)ctl->free_list[idx].next;
-		ctl->free_list[idx].next = block;	
-	}
-	block = ctl->free_list[idx].next;
-	ctl->free_list[idx].next = block->next;
-	block->next = (void*)&(ctl->free_list[idx]);
-
 	ctl->total_alloc++;
+
+	order = get_list_index_by_size(size + sizeof(struct free_block));
+
+	cur = ctl->free_list[order].next;
+	if(cur == &(ctl->free_list[order])) {
+		pp = get_page();
+		cur = (struct free_block*)pp->ptr;
+		cur->ref_count = 0;
+		end = (struct free_block*)(pp->ptr + PAGESIZE);
+		len = 1 << (5 + order);
+		while(cur < end) {
+			cur->page = pp;
+			list_insert_head(cur, &(ctl->free_list[order]));
+			cur = (struct free_block*)((void*)cur + len);
+		}
+		cur = ctl->free_list[order].next;
+	}
+	list_remove(cur);
+	cur->prev = &(ctl->free_list[order]);
+	cur->next = (struct free_block*)((long)(1 << (5 + order)));
+	block = (struct free_block*)get_page_start(cur);
+	block->ref_count++;
+	return (void*)cur + sizeof(struct free_block);
 	
-	// if have header, then return the actual address to user
-	return (void*)(block+1);
 }
 
 void
 kma_free(void* ptr, kma_size_t size)
 {
-	struct p2fl_ctl *ctl = get_p2fl_ctl();
-	struct page_item *cur;
-	struct free_block *block;
-	struct block_list *list;
-	int count = 0;
-	kma_page_t *page_array[MAXPAGES];
-	assert(ctl);
+	struct p2fl_ctl *ctl;
+	struct free_block *block, *cur, *end;
+	int len;
 
-	block = (struct free_block*)ptr;
-	block -= 1;
-	list = (struct block_list*)(block->next);
-
-	block->next = list->next;
-	list->next = block;
-
-	
+	ctl = get_p2fl_ctl();
 	ctl->total_free++;
 
-	// free all the pages after all the requests have been done
-	if(ctl->total_alloc == ctl->total_free) {
-		cur = ctl->page_list.next;
-		while(cur != &(ctl->page_list)) {
-			assert(cur->page->ptr);
-			page_array[count++] = cur->page;
-			cur = cur->next;
+	block = (struct free_block*)get_page_start(ptr);
+	cur = (struct free_block*)(ptr - sizeof(struct free_block));
+	len = (long)cur->next;
+	list_insert_head(cur, cur->prev);
+
+	block->ref_count -= 1;
+	if(block->ref_count == 0) {
+		cur = block;
+		end = (struct free_block*)((void*)block + PAGESIZE);
+		while(cur < end) {
+			list_remove(cur);
+			cur = (struct free_block*)((void*)cur + len);
 		}
-		cur = ctl->ctl_page_list.next;
-		while(cur != &(ctl->ctl_page_list)) {
-			assert(cur->page->ptr);
-			page_array[count++] = cur->page;
-			cur = cur->next;
-		}
-		for(count = count - 1; count >= 0; count--)
-			free_page(page_array[count]);
+		free_page(block->page);
+	}
+
+	if(unlikely(ctl->total_free == ctl->total_alloc)) {
 		free_page(first_page);
 		first_page = NULL;
 	}

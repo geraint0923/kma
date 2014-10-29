@@ -65,7 +65,7 @@
 #define unlikely(x)     __builtin_expect(!!(x), 0)
 
 #define SIZE_NUM	(13)
-#define SIZE_OFFSET	(5)
+#define SIZE_OFFSET	(7)
 
 struct free_block {
 	kma_page_t *page;
@@ -121,24 +121,20 @@ inline void list_remove(struct free_block *item) {
 }
 
 inline int get_list_index_by_size(int sz) {
-	if(sz <= 32)
+	if(sz <= 128)
 		return 0;
-	else if(sz <= 64)
-		return 1;
-	else if(sz <= 128)
-		return 2;
 	else if(sz <= 256)
-		return 3;
+		return 1;
 	else if(sz <= 512)
-		return 4;
+		return 2;
 	else if(sz <= 1024)
-		return 5;
+		return 3;
 	else if(sz <= 2048)
-		return 6;
+		return 4;
 	else if(sz <= 4096)
-		return 7;
+		return 5;
 	else
-		return 8;
+		return 6;
 }
 
 static kma_page_t *first_page = NULL;
@@ -176,7 +172,7 @@ kma_malloc(kma_size_t size)
 		cur = (struct free_block*)pp->ptr;
 		cur->ref_count = 0;
 		end = (struct free_block*)(pp->ptr + PAGESIZE);
-		len = 1 << (5 + order);
+		len = 1 << (SIZE_OFFSET + order);
 		while(cur < end) {
 			cur->page = pp;
 			list_insert_head(cur, &(ctl->free_list[order]));
@@ -186,7 +182,7 @@ kma_malloc(kma_size_t size)
 	}
 	list_remove(cur);
 	cur->prev = &(ctl->free_list[order]);
-	cur->next = (struct free_block*)((long)(1 << (5 + order)));
+	cur->next = (struct free_block*)((long)(1 << (SIZE_OFFSET + order)));
 	block = (struct free_block*)get_page_start(cur);
 	block->ref_count++;
 	return (void*)cur + sizeof(struct free_block);
